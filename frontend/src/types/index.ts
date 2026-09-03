@@ -6,6 +6,7 @@ export interface Character {
   description: string;
   system_prompt: string;
   avatar_url: string;
+  response_language: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;

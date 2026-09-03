@@ -16,6 +16,11 @@ class Character(models.Model):
         default="You are a friendly AI VTuber. Respond in a casual, engaging manner."
     )
     avatar_url = models.URLField(blank=True)
+    response_language = models.CharField(
+        max_length=20,
+        default='thai',
+        help_text='Language the character should always respond in (e.g., thai, english, japanese)'
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

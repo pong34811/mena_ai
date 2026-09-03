@@ -43,6 +43,10 @@ class ChatMessageViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ChatMessageSerializer
 
 
+from django.views.decorators.csrf import csrf_exempt
+
+
+@csrf_exempt
 @api_view(['POST'])
 def chat(request: Request) -> Response:
     """
@@ -77,7 +81,13 @@ def chat(request: Request) -> Response:
         .order_by('-created_at')
         .values('role', 'content')[:20]
     )
-    messages = [{'role': 'system', 'content': character.system_prompt}]
+    
+    # Inject language instruction into system prompt
+    language = character.response_language or 'thai'
+    language_instruction = f"\n\n**สำคัญมาก: คุณต้องตอบกลับเป็นภาษา{language}เท่านั้น อย่าตอบเป็นภาษาอื่น**"
+    system_prompt = character.system_prompt + language_instruction
+    
+    messages = [{'role': 'system', 'content': system_prompt}]
     messages += [{'role': h['role'], 'content': h['content']} for h in reversed(history)]
     messages.append({'role': 'user', 'content': user_message})
     
