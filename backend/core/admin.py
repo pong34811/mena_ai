@@ -4,6 +4,7 @@ Custom admin configuration for AI VTuber system.
 
 from django.contrib import admin
 from .models import Character, ChatMessage, LLMProvider
+from .youtube_admin import *  # Registers YouTube models
 
 
 class CharacterAdmin(admin.ModelAdmin):

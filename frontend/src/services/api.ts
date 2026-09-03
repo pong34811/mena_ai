@@ -81,4 +81,65 @@ export const llmStatusApi = {
   },
 };
 
+export interface YouTubeChatSession {
+  id: string;
+  video_id: string;
+  character: string;
+  character_name: string;
+  status: 'active' | 'paused' | 'stopped';
+  auto_reply: boolean;
+  messages_received: number;
+  replies_sent: number;
+  started_at: string;
+  stopped_at: string | null;
+}
+
+export interface YouTubeChatMessage {
+  id: string;
+  author_name: string;
+  author_channel_id: string;
+  text: string;
+  is_mod: boolean;
+  is_owner: boolean;
+  is_super_chat: boolean;
+  ai_response: string;
+  ai_responded: boolean;
+  received_at: string;
+}
+
+export const youtubeChatApi = {
+  startSession: async (
+    videoId: string,
+    characterId?: string,
+    autoReply: boolean = false
+  ): Promise<YouTubeChatSession> => {
+    const { data } = await api.post('/yt-chat/start/', {
+      video_id: videoId,
+      character_id: characterId || null,
+      auto_reply: autoReply,
+    });
+    return data;
+  },
+
+  stopSession: async (): Promise<{ status: string }> => {
+    const { data } = await api.post('/yt-chat/stop/');
+    return data;
+  },
+
+  getStatus: async (): Promise<YouTubeChatSession | { active: false }> => {
+    const { data } = await api.get('/yt-chat/status/');
+    return data;
+  },
+
+  getMessages: async (sessionId: string): Promise<{ results: YouTubeChatMessage[] }> => {
+    const { data } = await api.get(`/yt-messages/?session_id=${sessionId}`);
+    return data;
+  },
+
+  getSessions: async (): Promise<{ results: YouTubeChatSession[] }> => {
+    const { data } = await api.get('/yt-sessions/');
+    return data;
+  },
+};
+
 export default api;

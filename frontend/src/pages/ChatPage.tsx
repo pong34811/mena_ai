@@ -1,35 +1,66 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { chatApi, characterApi } from '@/services/api'
+import { chatApi, characterApi, youtubeChatApi } from '@/services/api'
 import type { Character } from '@/types'
+import type { YouTubeChatSession } from '@/services/api'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { Send, User, Bot, ArrowLeft } from 'lucide-react'
+import { Send, User, Bot, ArrowLeft, Play, Square, Zap, Video } from 'lucide-react'
 
-interface Message {
+interface DisplayMessage {
   id: string
   role: 'user' | 'assistant'
   content: string
   timestamp: Date
+  author?: string
+  isSuperChat?: boolean
+  isMod?: boolean
+  isOwner?: boolean
+  isYouTube?: boolean
+  aiResponse?: string
 }
 
 export default function ChatPage() {
   const [characters, setCharacters] = useState<Character[]>([])
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null)
-  const [messages, setMessages] = useState<Message[]>([])
+  const [messages, setMessages] = useState<DisplayMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // YouTube Live Chat state
+  const [ytVideoUrl, setYtVideoUrl] = useState('')
+  const [ytSession, setYtSession] = useState<YouTubeChatSession | null>(null)
+  const [ytAutoReply, setYtAutoReply] = useState(false)
+  const [ytConnecting, setYtConnecting] = useState(false)
+  const [showYtPanel, setShowYtPanel] = useState(false)
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const ytPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     loadCharacters()
+    checkExistingYtSession()
   }, [])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  // Poll YouTube messages when session is active
+  useEffect(() => {
+    if (ytSession && ytSession.status === 'active') {
+      ytPollRef.current = setInterval(fetchYtMessages, 2000)
+      fetchYtMessages()
+    } else if (ytPollRef.current) {
+      clearInterval(ytPollRef.current)
+      ytPollRef.current = null
+    }
+    return () => {
+      if (ytPollRef.current) clearInterval(ytPollRef.current)
+    }
+  }, [ytSession?.id, ytSession?.status])
 
   const loadCharacters = async () => {
     try {
@@ -41,10 +72,121 @@ export default function ChatPage() {
     }
   }
 
+  const checkExistingYtSession = async () => {
+    try {
+      const status = await youtubeChatApi.getStatus()
+      if ('active' in status && status.active === false) return
+      if ('id' in status) {
+        setYtSession(status as YouTubeChatSession)
+        setShowYtPanel(true)
+      }
+    } catch {
+      // No existing session
+    }
+  }
+
+  const fetchYtMessages = useCallback(async () => {
+    if (!ytSession) return
+    try {
+      const data = await youtubeChatApi.getMessages(ytSession.id)
+      const ytMsgs = data.results || []
+      
+      // Convert YouTube messages to display messages
+      const newMessages: DisplayMessage[] = []
+      for (const ytMsg of ytMsgs) {
+        // YouTube user message
+        newMessages.push({
+          id: `yt-${ytMsg.id}`,
+          role: 'user',
+          content: ytMsg.text,
+          timestamp: new Date(ytMsg.received_at),
+          author: ytMsg.author_name,
+          isSuperChat: ytMsg.is_super_chat,
+          isMod: ytMsg.is_mod,
+          isOwner: ytMsg.is_owner,
+          isYouTube: true,
+        })
+        // AI response if available
+        if (ytMsg.ai_responded && ytMsg.ai_response) {
+          newMessages.push({
+            id: `yt-ai-${ytMsg.id}`,
+            role: 'assistant',
+            content: ytMsg.ai_response,
+            timestamp: new Date(ytMsg.received_at),
+            isYouTube: true,
+          })
+        }
+      }
+      
+      setMessages((prev) => {
+        // Merge with existing messages, avoid duplicates
+        const existingIds = new Set(prev.map(m => m.id))
+        const merged = [...prev]
+        for (const msg of newMessages) {
+          if (!existingIds.has(msg.id)) {
+            merged.push(msg)
+          }
+        }
+        // Sort by timestamp
+        merged.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+        return merged.slice(-100) // Keep last 100 messages
+      })
+    } catch {
+      // Ignore poll errors
+    }
+  }, [ytSession?.id])
+
+  const extractVideoId = (url: string): string | null => {
+    const patterns = [
+      /(?:youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})/,
+      /(?:youtu\.be\/)([a-zA-Z0-9_-]{11})/,
+      /(?:youtube\.com\/live\/)([a-zA-Z0-9_-]{11})/,
+      /^([a-zA-Z0-9_-]{11})$/,
+    ]
+    for (const pattern of patterns) {
+      const match = url.match(pattern)
+      if (match) return match[1]
+    }
+    return null
+  }
+
+  const handleStartYoutube = async () => {
+    const videoId = extractVideoId(ytVideoUrl.trim())
+    if (!videoId) {
+      setError('Invalid YouTube URL. Example: https://www.youtube.com/watch?v=Af7pRKJYFE0')
+      return
+    }
+
+    setYtConnecting(true)
+    setError(null)
+    try {
+      const session = await youtubeChatApi.startSession(
+        videoId,
+        selectedCharacter?.id,
+        ytAutoReply
+      )
+      setYtSession(session)
+      setShowYtPanel(true)
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to start YouTube chat session')
+    } finally {
+      setYtConnecting(false)
+    }
+  }
+
+  const handleStopYoutube = async () => {
+    try {
+      await youtubeChatApi.stopSession()
+      setYtSession(null)
+    } catch {
+      setError('Failed to stop YouTube chat session')
+    }
+  }
+
   const handleSend = async () => {
     if (!input.trim() || loading || !selectedCharacter) return
 
-    const userMessage: Message = {
+    const userMessage: DisplayMessage = {
       id: Date.now().toString(),
       role: 'user',
       content: input.trim(),
@@ -62,7 +204,7 @@ export default function ChatPage() {
         message: userMessage.content,
       })
 
-      const assistantMessage: Message = {
+      const assistantMessage: DisplayMessage = {
         id: response.message_id,
         role: 'assistant',
         content: response.response,
@@ -84,6 +226,37 @@ export default function ChatPage() {
     }
   }
 
+  const getAvatarContent = (msg: DisplayMessage) => {
+    if (msg.role === 'assistant') {
+      return <Bot className="h-4 w-4" />
+    }
+    if (msg.isYouTube && msg.author) {
+      return msg.author.charAt(1).toUpperCase() // @username -> U
+    }
+    return <User className="h-4 w-4" />
+  }
+
+  const getAvatarStyle = (msg: DisplayMessage) => {
+    if (msg.role === 'assistant') {
+      return 'bg-gradient-to-br from-primary to-secondary text-white'
+    }
+    if (msg.isYouTube) {
+      return 'bg-red-500/20 border border-red-500/50 text-red-400'
+    }
+    return 'bg-surface-light'
+  }
+
+  const getBubbleStyle = (msg: DisplayMessage) => {
+    if (msg.role === 'user') {
+      return 'bg-primary text-white rounded-br-md'
+    }
+    return 'bg-surface-light border border-border rounded-bl-md'
+  }
+
+  const getTimeString = (date: Date) => {
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  }
+
   return (
     <div className="flex h-screen bg-background">
       {/* Sidebar */}
@@ -101,10 +274,7 @@ export default function ChatPage() {
             {characters.map((char) => (
               <button
                 key={char.id}
-                onClick={() => {
-                  setSelectedCharacter(char)
-                  setMessages([])
-                }}
+                onClick={() => setSelectedCharacter(char)}
                 className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all ${
                   selectedCharacter?.id === char.id
                     ? 'bg-primary/20 border border-primary/50'
@@ -126,6 +296,91 @@ export default function ChatPage() {
           </div>
         </div>
 
+        {/* YouTube Live Chat Section */}
+        <div className="p-4 border-t border-border">
+          <button
+            onClick={() => setShowYtPanel(!showYtPanel)}
+            className="w-full flex items-center gap-2 text-sm font-semibold text-text-muted uppercase tracking-wider mb-3 hover:text-text transition-colors"
+          >
+            <Video className="h-4 w-4 text-red-500" />
+            YouTube Live Chat
+            {ytSession && (
+              <span className="ml-auto h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+            )}
+          </button>
+
+          {showYtPanel && (
+            <div className="space-y-3">
+              {!ytSession ? (
+                <>
+                  <Input
+                    value={ytVideoUrl}
+                    onChange={(e) => setYtVideoUrl(e.target.value)}
+                    placeholder="YouTube URL or Video ID"
+                    className="text-xs"
+                  />
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="autoReply"
+                      checked={ytAutoReply}
+                      onChange={(e) => setYtAutoReply(e.target.checked)}
+                      className="rounded border-border"
+                    />
+                    <label htmlFor="autoReply" className="text-xs text-text-muted">
+                      Auto-reply
+                    </label>
+                  </div>
+                  <Button
+                    onClick={handleStartYoutube}
+                    disabled={!ytVideoUrl.trim() || ytConnecting}
+                    size="sm"
+                    className="w-full"
+                  >
+                    {ytConnecting ? (
+                      <>Connecting...</>
+                    ) : (
+                      <>
+                        <Play className="h-3 w-3 mr-1" />
+                        Connect
+                      </>
+                    )}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <div className="bg-surface-light rounded-lg p-2 text-xs space-y-1">
+                    <div className="flex items-center gap-1 text-green-500">
+                      <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                      Connected
+                    </div>
+                    <div className="text-text-muted truncate">
+                      Video: {ytSession.video_id}
+                    </div>
+                    <div className="text-text-muted">
+                      Messages: {ytSession.messages_received}
+                    </div>
+                    {ytSession.auto_reply && (
+                      <div className="text-text-muted">
+                        Replies: {ytSession.replies_sent}
+                      </div>
+                    )}
+                  </div>
+                  <Button
+                    onClick={handleStopYoutube}
+                    variant="destructive"
+                    size="sm"
+                    className="w-full"
+                  >
+                    <Square className="h-3 w-3 mr-1" />
+                    Disconnect
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
         <div className="mt-auto p-4 border-t border-border">
           <Link to="/characters">
             <Button variant="outline" className="w-full" size="sm">
@@ -143,10 +398,17 @@ export default function ChatPage() {
             <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-semibold">
               {selectedCharacter.name[0]}
             </div>
-            <div>
+            <div className="flex-1">
               <h2 className="font-semibold">{selectedCharacter.name}</h2>
               <p className="text-xs text-text-muted">{selectedCharacter.description}</p>
             </div>
+            {ytSession && (
+              <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-1.5">
+                <Video className="h-4 w-4 text-red-500" />
+                <span className="text-xs text-red-400 font-medium">LIVE</span>
+                <span className="text-xs text-text-muted">{ytSession.messages_received} msgs</span>
+              </div>
+            )}
           </header>
         )}
 
@@ -162,8 +424,12 @@ export default function ChatPage() {
                 <CardContent className="pt-6 text-center">
                   <Bot className="h-12 w-12 text-primary mx-auto mb-4" />
                   <h3 className="font-semibold text-lg mb-2">Start a conversation</h3>
-                  <p className="text-sm text-text-muted">
+                  <p className="text-sm text-text-muted mb-3">
                     Say hello to {selectedCharacter.name} and begin your chat!
+                  </p>
+                  <p className="text-xs text-text-muted flex items-center justify-center gap-1">
+                    <Video className="h-3 w-3 text-red-500" />
+                    Or connect a YouTube live stream to auto-respond to chat
                   </p>
                 </CardContent>
               </Card>
@@ -172,27 +438,41 @@ export default function ChatPage() {
             messages.map((msg) => (
               <div
                 key={msg.id}
-                className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
+                className={`flex gap-3 ${msg.role === 'user' && !msg.isYouTube ? 'flex-row-reverse' : ''}`}
               >
                 <div
-                  className={`h-8 w-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                    msg.role === 'user'
-                      ? 'bg-surface-light'
-                      : 'bg-gradient-to-br from-primary to-secondary text-white'
-                  }`}
+                  className={`h-8 w-8 rounded-full flex items-center justify-center flex-shrink-0 ${getAvatarStyle(msg)}`}
                 >
-                  {msg.role === 'user' ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
+                  {getAvatarContent(msg)}
                 </div>
                 <div
-                  className={`max-w-[70%] rounded-2xl px-4 py-3 ${
-                    msg.role === 'user'
-                      ? 'bg-primary text-white rounded-br-md'
-                      : 'bg-surface-light border border-border rounded-bl-md'
-                  }`}
+                  className={`max-w-[70%] rounded-2xl px-4 py-3 ${getBubbleStyle(msg)}`}
                 >
+                  {/* Author label for YouTube messages */}
+                  {msg.isYouTube && msg.author && (
+                    <div className="flex items-center gap-2 mb-1">
+                      {msg.isSuperChat && (
+                        <Zap className="h-3 w-3 text-yellow-500" />
+                      )}
+                      {msg.isMod && (
+                        <span className="text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded">
+                          MOD
+                        </span>
+                      )}
+                      {msg.isOwner && (
+                        <span className="text-[10px] bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded">
+                          OWNER
+                        </span>
+                      )}
+                      <span className="text-xs font-medium text-red-400">
+                        {msg.author}
+                      </span>
+                      <span className="text-[10px] text-red-400/60">via YouTube</span>
+                    </div>
+                  )}
                   <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                  <p className={`text-xs mt-1 ${msg.role === 'user' ? 'text-white/70' : 'text-text-muted'}`}>
-                    {msg.timestamp.toLocaleTimeString()}
+                  <p className={`text-xs mt-1 ${msg.role === 'user' && !msg.isYouTube ? 'text-white/70' : 'text-text-muted'}`}>
+                    {getTimeString(msg.timestamp)}
                   </p>
                 </div>
               </div>
@@ -231,7 +511,7 @@ export default function ChatPage() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={`Message ${selectedCharacter.name}...`}
+                placeholder={ytSession ? `Message ${selectedCharacter.name} or wait for YouTube chat...` : `Message ${selectedCharacter.name}...`}
                 disabled={loading}
                 className="flex-1"
               />
