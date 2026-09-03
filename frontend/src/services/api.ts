@@ -4,7 +4,7 @@ import axios from 'axios';
 import type { Character, ChatMessage, ChatRequest, ChatResponse, HealthResponse, LLMProvider, LLMStatus } from '../types';
 
 const api = axios.create({
-  baseURL: 'http://127.0.0.1:8000/api',
+  baseURL: '/api',
   headers: {
     'Content-Type': 'application/json',
   },

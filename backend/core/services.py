@@ -2,7 +2,7 @@
 LLM Service - connects to Free LLM API server with auto model selection.
 
 Performance design (benchmarked 2026-09-03, Free LLM API @ 127.0.0.1:31415):
-- `compound-mini` ~0.9s vs `auto` ~24.5s (27x faster) -> default model.
+- `auto` is the default model (API routes to best available).
 - Module-level shared session / rate limiter / caches: Django creates a new
   service per request, so per-instance state never hits. Shared state fixes that.
 """
@@ -28,7 +28,7 @@ PREFERRED_MODELS = [
     "deepseek-chat",
     "gpt-3.5-turbo",
 ]
-DEFAULT_MODEL = "compound-mini"
+DEFAULT_MODEL = "auto"
 
 # ---- Module-level shared state (survives per-request service instances) ----
 _state_lock = threading.Lock()
@@ -151,7 +151,7 @@ def _load_provider_config() -> dict:
             cfg["max_tokens"] = provider.max_tokens
     except Exception as e:  # DB not ready / model missing - use settings
         logger.debug(f"DB provider lookup failed, using settings: {e}")
-    if not cfg["model_name"] or cfg["model_name"] == "auto":
+    if not cfg["model_name"]:
         cfg["model_name"] = DEFAULT_MODEL
     return cfg
 
