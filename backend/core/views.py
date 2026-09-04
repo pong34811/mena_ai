@@ -32,8 +32,8 @@ def _get_character(char_id: str):
     if char_id not in _character_cache:
         try:
             _character_cache[char_id] = Character.objects.only(
-                'id', 'name', 'system_prompt', 'system_prompt_ai',
-                'response_language', 'enable_per_user_memory', 'memory_duration_days'
+                'id', 'name', 'name_th', 'name_en', 'system_prompt', 'system_prompt_ai',
+                'response_language', 'response_length', 'enable_per_user_memory', 'memory_duration_days'
             ).get(id=char_id)
         except Character.DoesNotExist:
             return None
@@ -121,6 +121,22 @@ def chat(request: Request) -> Response:
     system_prompt = character.system_prompt
     if character.system_prompt_ai:
         system_prompt += f"\n\n{character.system_prompt_ai}"
+    
+    # Replace name templates with actual names
+    name_th = character.name_th or character.name
+    name_en = character.name_en or character.name
+    system_prompt = system_prompt.replace('{name_th}', name_th).replace('{name_en}', name_en)
+    
+    # Apply response_length instruction
+    length_map = {
+        'short': 'ตอบสั้นๆ ไม่เกิน 1-2 ประโยค หรือ 60 ตัวอักษร เหมือนสตรีมเมอร์ทั่วไป',
+        'normal': 'ตอบปกติ ไม่เกิน 2-4 ประโยค หรือ 150 ตัวอักษร',
+        'long': 'ตอบยาวเต็มที่ ให้รายละเอียด',
+        'custom': f'ตอบตามความยาวที่กำหนด (max_tokens={character.custom_max_tokens or 1024})',
+    }
+    length_text = length_map.get(character.response_length, length_map['short'])
+    system_prompt = system_prompt.replace('{response_length_instruction}', length_text)
+    
     system_prompt += f"\n\n**สำคัญมาก: คุณต้องตอบกลับเป็นภาษา{language}เท่านั้น อย่าตอบเป็นภาษาอื่น**"
 
     messages = [{'role': 'system', 'content': system_prompt}]
@@ -130,7 +146,10 @@ def chat(request: Request) -> Response:
     # Call LLM
     llm = LLMService()
     try:
-        response_text = llm.chat(messages)
+        # Override max_tokens based on response_length (always use auto model)
+        length_tokens = {'short': 128, 'normal': 256, 'long': 512, 'custom': character.custom_max_tokens or 512}
+        max_tokens = length_tokens.get(character.response_length, 256)
+        response_text = llm.chat(messages, max_tokens=max_tokens)
     except LLMServiceError as e:
         return Response({'error': str(e)}, status=status.HTTP_502_BAD_GATEWAY)
 

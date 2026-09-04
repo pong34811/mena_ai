@@ -105,9 +105,10 @@ class TTSService:
         if not text or not text.strip():
             return None
         
-        # Truncate very long text (edge-tts limit)
-        if len(text) > 5000:
-            text = text[:5000]
+        # Truncate very long text (edge-tts limit + VTuber style = short)
+        # 150 chars ≈ 2-3 sentences, keeps TTS fast (2-5s)
+        if len(text) > 150:
+            text = text[:150]
         
         cache_path = get_cache_path(text, self.voice)
         

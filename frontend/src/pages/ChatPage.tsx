@@ -164,19 +164,34 @@ export default function ChatPage() {
     try {
       const blob = await ttsApi.chatMessage(text, selectedCharacter?.id, ttsVoice)
       const url = URL.createObjectURL(blob)
+      
+      // Stop current playback
       if (audioRef.current) {
         audioRef.current.pause()
+        audioRef.current.src = ''
       }
+      
+      // Create Audio element and add to DOM (required for autoplay in some browsers)
       const audio = new Audio(url)
+      audio.setAttribute('playsinline', '')
+      audio.setAttribute('webkit-playsinline', '')
+      audio.style.display = 'none'
+      document.body.appendChild(audio)
       audioRef.current = audio
+      
+      // Set up event handlers
       audio.onended = () => {
         URL.revokeObjectURL(url)
+        if (audio.parentNode) audio.parentNode.removeChild(audio)
         setTtsLoading(null)
       }
       audio.onerror = () => {
         URL.revokeObjectURL(url)
+        if (audio.parentNode) audio.parentNode.removeChild(audio)
         setTtsLoading(null)
       }
+      
+      // Play (user already interacted by sending message)
       await audio.play()
     } catch (err) {
       console.error('TTS error:', err)
@@ -221,6 +236,20 @@ export default function ChatPage() {
       setYtConnecting(false)
     }
   }
+
+  // Auto-play TTS for YouTube AI responses
+  const prevMessagesLengthRef = useRef(0)
+  useEffect(() => {
+    if (messages.length > prevMessagesLengthRef.current) {
+      const newMessages = messages.slice(prevMessagesLengthRef.current)
+      for (const msg of newMessages) {
+        if (msg.role === 'assistant' && msg.isYouTube && ttsEnabled && msg.content) {
+          playTTS(msg.content, msg.id)
+        }
+      }
+    }
+    prevMessagesLengthRef.current = messages.length
+  }, [messages])
 
   const handleStopYoutube = async () => {
     try {
@@ -336,10 +365,10 @@ export default function ChatPage() {
                 }`}
               >
                 <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-semibold">
-                  {char.name[0]}
+                  {(char.name_th || char.name)[0]}
                 </div>
                 <div className="text-left">
-                  <div className="font-medium text-sm">{char.name}</div>
+                  <div className="font-medium text-sm">{char.name_th || char.name}</div>
                   <div className="text-xs text-text-muted truncate max-w-[160px]">{char.description}</div>
                 </div>
               </button>
@@ -507,7 +536,7 @@ export default function ChatPage() {
                   <Bot className="h-12 w-12 text-primary mx-auto mb-4" />
                   <h3 className="font-semibold text-lg mb-2">Start a conversation</h3>
                   <p className="text-sm text-text-muted mb-3">
-                    Say hello to {selectedCharacter.name} and begin your chat!
+                    Say hello to {selectedCharacter.name_th || selectedCharacter.name} and begin your chat!
                   </p>
                   <p className="text-xs text-text-muted flex items-center justify-center gap-1">
                     <Video className="h-3 w-3 text-red-500" />
@@ -624,7 +653,7 @@ export default function ChatPage() {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder={ytSession ? `Message ${selectedCharacter.name} or wait for YouTube chat...` : `Message ${selectedCharacter.name}...`}
+                  placeholder={ytSession ? `Message ${selectedCharacter.name_th || selectedCharacter.name} or wait for YouTube chat...` : `Message ${selectedCharacter.name_th || selectedCharacter.name}...`}
                   disabled={loading}
                   className="flex-1"
                 />

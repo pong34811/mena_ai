@@ -11,6 +11,8 @@ class Character(models.Model):
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100)
+    name_th = models.CharField(max_length=100, blank=True, help_text='ชื่อภาษาไทย (เช่น มีนา)')
+    name_en = models.CharField(max_length=100, blank=True, help_text='ชื่อภาษาอังกฤษ (เช่น Mena)')
     description = models.TextField(blank=True)
     system_prompt = models.TextField(
         default="You are a friendly AI VTuber. Respond in a casual, engaging manner."
@@ -35,6 +37,22 @@ class Character(models.Model):
         help_text='How long to remember user messages (days)'
     )
     is_active = models.BooleanField(default=True)
+    response_length = models.CharField(
+        max_length=10,
+        default='short',
+        choices=[
+            ('short', 'สั้น (Short)'),
+            ('normal', 'ปกติ (Normal)'),
+            ('long', 'ยาว (Long)'),
+            ('custom', 'Custom'),
+        ],
+        help_text='ความยาวคำตอบ: สั้น=1-2 ประโยค, ปกติ=2-3 ประโยค, ยาว=เต็มที่, custom=ตั้งค่าเอง'
+    )
+    custom_max_tokens = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text='Custom max_tokens (ใช้เมื่อเลือก Custom)'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

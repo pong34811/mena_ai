@@ -18,12 +18,29 @@ const LANGUAGES = [
   { value: 'german', label: '🇩🇪 เยอรมัน (German)' },
 ]
 
-const emptyForm = {
+interface FormData {
+  name: string;
+  name_th: string;
+  name_en: string;
+  description: string;
+  system_prompt: string;
+  avatar_url: string;
+  response_language: string;
+  response_length: 'short' | 'normal' | 'long' | 'custom';
+  enable_per_user_memory: boolean;
+  memory_duration_days: number;
+  system_prompt_ai: string;
+}
+
+const emptyForm: FormData = {
   name: '',
+  name_th: '',
+  name_en: '',
   description: '',
   system_prompt: '',
   avatar_url: '',
   response_language: 'thai',
+  response_length: 'short',
   enable_per_user_memory: true,
   memory_duration_days: 3,
   system_prompt_ai: '',
@@ -58,10 +75,13 @@ export default function CharactersPage() {
       if (char) {
         setFormData({
           name: char.name,
+          name_th: char.name_th || '',
+          name_en: char.name_en || '',
           description: char.description,
           system_prompt: char.system_prompt,
           avatar_url: char.avatar_url,
           response_language: (char as any).response_language || 'thai',
+          response_length: (char as any).response_length || 'short',
           enable_per_user_memory: (char as any).enable_per_user_memory ?? true,
           memory_duration_days: (char as any).memory_duration_days ?? 3,
           system_prompt_ai: (char as any).system_prompt_ai || '',
@@ -174,7 +194,23 @@ export default function CharactersPage() {
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Name</label>
+                    <label className="text-sm font-medium">Name (English)</label>
+                    <Input
+                      value={formData.name_en}
+                      onChange={(e) => setFormData({ ...formData, name_en: e.target.value })}
+                      placeholder="e.g. Mena"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Name (Thai)</label>
+                    <Input
+                      value={formData.name_th}
+                      onChange={(e) => setFormData({ ...formData, name_th: e.target.value })}
+                      placeholder="e.g. มีนา"
+                    />
+                  </div>
+                  <div className="space-y-2 col-span-2">
+                    <label className="text-sm font-medium">Display Name</label>
                     <Input
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -256,6 +292,21 @@ export default function CharactersPage() {
                   <p className="text-xs text-text-muted">ภาษาที่ตัวละครจะใช้ตอบกลับเท่านั้น</p>
                 </div>
 
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">ความยาวคำตอบ</label>
+                  <select
+                    value={formData.response_length}
+                    onChange={(e) => setFormData({ ...formData, response_length: e.target.value as 'short' | 'normal' | 'long' | 'custom' })}
+                    className="w-full rounded-lg border border-border bg-surface-light px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    <option value="short">🎯 สั้น (1-2 ประโยค)</option>
+                    <option value="normal">📝 ปกติ (2-4 ประโยค)</option>
+                    <option value="long">📖 ยาว (เต็มที่)</option>
+                    <option value="custom">⚙️ Custom</option>
+                  </select>
+                  <p className="text-xs text-text-muted">สั้น=เร็ว+ประหยัดโควต้า, ปกติ=สมดุล, ยาว=ละเอียด</p>
+                </div>
+
                 {/* Memory Settings */}
                 <div className="space-y-3 pt-2 border-t border-border">
                   <h3 className="text-sm font-semibold text-text">🧠 Memory Settings</h3>
@@ -322,10 +373,10 @@ export default function CharactersPage() {
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
                       <div className="h-12 w-12 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-bold text-lg">
-                        {char.name[0]}
+                        {(char.name_th || char.name)[0]}
                       </div>
                       <div>
-                        <CardTitle className="text-base">{char.name}</CardTitle>
+                        <CardTitle className="text-base">{char.name_th || char.name}</CardTitle>
                         <CardDescription className="text-xs">{char.description}</CardDescription>
                       </div>
                     </div>
@@ -371,7 +422,7 @@ export default function CharactersPage() {
               <div className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-accent" />
                 <h2 className="font-semibold">
-                  System Prompt AI — {aiPromptCharacter?.name}
+                  System Prompt AI — {aiPromptCharacter?.name_th || aiPromptCharacter?.name}
                 </h2>
               </div>
               <Button variant="ghost" size="icon" onClick={() => setShowAiModal(false)}>
