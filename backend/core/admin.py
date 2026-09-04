@@ -3,7 +3,7 @@ Custom admin configuration for AI VTuber system.
 """
 
 from django.contrib import admin
-from .models import Character, ChatMessage, LLMProvider
+from .models import Character, ChatMessage, LLMProvider, TTSSettings
 from .youtube_admin import *  # Registers YouTube models
 
 
@@ -89,3 +89,4 @@ class LLMProviderAdmin(admin.ModelAdmin):
 admin.site.register(Character, CharacterAdmin)
 admin.site.register(ChatMessage, ChatMessageAdmin)
 admin.site.register(LLMProvider, LLMProviderAdmin)
+admin.site.register(TTSSettings)

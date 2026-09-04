@@ -30,4 +30,7 @@ urlpatterns = [
     path('tts/generate/', tts_views.tts_generate, name='tts-generate'),
     path('tts/voices/', tts_views.tts_voices, name='tts-voices'),
     path('tts/chat-message/', tts_views.tts_chat_message, name='tts-chat-message'),
+    # TTS settings endpoints
+    path('tts/settings/', tts_views.tts_settings_get, name='tts-settings'),
+    path('tts/settings/update/', tts_views.tts_settings_update, name='tts-settings-update'),
 ]

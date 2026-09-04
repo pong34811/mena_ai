@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { chatApi, characterApi, youtubeChatApi, ttsApi } from '@/services/api'
+import { chatApi, characterApi, youtubeChatApi } from '@/services/api'
 import type { Character } from '@/types'
 import type { YouTubeChatSession } from '@/services/api'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { Send, User, Bot, ArrowLeft, Play, Square, Zap, Video, Volume2, VolumeX, Loader2 } from 'lucide-react'
+import { Send, User, Bot, ArrowLeft, Play, Square, Zap, Video, Volume2, VolumeX, SkipForward, MessageSquare, Sparkles, Settings } from 'lucide-react'
+import { useHowlerTTS } from '@/hooks/useHowlerTTS'
 
 interface DisplayMessage {
   id: string
@@ -18,7 +19,6 @@ interface DisplayMessage {
   isMod?: boolean
   isOwner?: boolean
   isYouTube?: boolean
-  aiResponse?: string
 }
 
 export default function ChatPage() {
@@ -33,18 +33,18 @@ export default function ChatPage() {
   // YouTube Live Chat state
   const [ytVideoUrl, setYtVideoUrl] = useState('')
   const [ytSession, setYtSession] = useState<YouTubeChatSession | null>(null)
-  const [ytAutoReply, setYtAutoReply] = useState(false)
+  const [ytAutoReply, setYtAutoReply] = useState(true)
   const [ytConnecting, setYtConnecting] = useState(false)
   const [showYtPanel, setShowYtPanel] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const ytPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // TTS state
-  const [ttsEnabled, setTtsEnabled] = useState(() => localStorage.getItem('mena_tts_enabled') === 'true')
-  const [ttsLoading, setTtsLoading] = useState<string | null>(null)
-  const [ttsVoice, setTtsVoice] = useState(() => localStorage.getItem('mena_tts_voice') || 'th-TH-PremwadeeNeural')
-  const audioRef = useRef<HTMLAudioElement | null>(null)
+  // TTS Hook (client-side Howler)
+    const tts = useHowlerTTS()
+  
+    // Derived TTS state
+    const ttsEnabled = tts.settings?.questioner_enabled || tts.settings?.responder_enabled || false
 
   useEffect(() => {
     loadCharacters()
@@ -97,11 +97,9 @@ export default function ChatPage() {
     try {
       const data = await youtubeChatApi.getMessages(ytSession.id)
       const ytMsgs = data.results || []
-      
-      // Convert YouTube messages to display messages
+
       const newMessages: DisplayMessage[] = []
       for (const ytMsg of ytMsgs) {
-        // YouTube user message
         newMessages.push({
           id: `yt-${ytMsg.id}`,
           role: 'user',
@@ -113,7 +111,6 @@ export default function ChatPage() {
           isOwner: ytMsg.is_owner,
           isYouTube: true,
         })
-        // AI response if available
         if (ytMsg.ai_responded && ytMsg.ai_response) {
           newMessages.push({
             id: `yt-ai-${ytMsg.id}`,
@@ -123,10 +120,19 @@ export default function ChatPage() {
             isYouTube: true,
           })
         }
+        // Speak the viewer message when it arrives (questioner, gated by
+        // questioner_enabled) and its AI reply later if/when one appears.
+        // Deduplicated inside the hook, so late replies are spoken exactly once.
+        tts.speakExchange({
+          questioner_text: ytMsg.text,
+          questioner_author: ytMsg.author_name,
+          responder_text: ytMsg.ai_responded ? ytMsg.ai_response || '' : '',
+          source: 'youtube',
+          source_id: String(ytMsg.id),
+        })
       }
-      
+
       setMessages((prev) => {
-        // Merge with existing messages, avoid duplicates
         const existingIds = new Set(prev.map(m => m.id))
         const merged = [...prev]
         for (const msg of newMessages) {
@@ -134,9 +140,8 @@ export default function ChatPage() {
             merged.push(msg)
           }
         }
-        // Sort by timestamp
         merged.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
-        return merged.slice(-100) // Keep last 100 messages
+        return merged.slice(-100)
       })
     } catch {
       // Ignore poll errors
@@ -155,62 +160,6 @@ export default function ChatPage() {
       if (match) return match[1]
     }
     return null
-  }
-
-  // TTS functions
-  const playTTS = async (text: string, messageId: string) => {
-    if (!ttsEnabled || !text.trim()) return
-    setTtsLoading(messageId)
-    try {
-      const blob = await ttsApi.chatMessage(text, selectedCharacter?.id, ttsVoice)
-      const url = URL.createObjectURL(blob)
-      
-      // Stop current playback
-      if (audioRef.current) {
-        audioRef.current.pause()
-        audioRef.current.src = ''
-      }
-      
-      // Create Audio element and add to DOM (required for autoplay in some browsers)
-      const audio = new Audio(url)
-      audio.setAttribute('playsinline', '')
-      audio.setAttribute('webkit-playsinline', '')
-      audio.style.display = 'none'
-      document.body.appendChild(audio)
-      audioRef.current = audio
-      
-      // Set up event handlers
-      audio.onended = () => {
-        URL.revokeObjectURL(url)
-        if (audio.parentNode) audio.parentNode.removeChild(audio)
-        setTtsLoading(null)
-      }
-      audio.onerror = () => {
-        URL.revokeObjectURL(url)
-        if (audio.parentNode) audio.parentNode.removeChild(audio)
-        setTtsLoading(null)
-      }
-      
-      // Play (user already interacted by sending message)
-      await audio.play()
-    } catch (err) {
-      console.error('TTS error:', err)
-      setTtsLoading(null)
-    }
-  }
-
-  const toggleTTSEnabled = () => {
-    const newValue = !ttsEnabled
-    setTtsEnabled(newValue)
-    localStorage.setItem('mena_tts_enabled', String(newValue))
-    if (!newValue && audioRef.current) {
-      audioRef.current.pause()
-    }
-  }
-
-  const handleVoiceChange = (voiceId: string) => {
-    setTtsVoice(voiceId)
-    localStorage.setItem('mena_tts_voice', voiceId)
   }
 
   const handleStartYoutube = async () => {
@@ -237,20 +186,6 @@ export default function ChatPage() {
     }
   }
 
-  // Auto-play TTS for YouTube AI responses
-  const prevMessagesLengthRef = useRef(0)
-  useEffect(() => {
-    if (messages.length > prevMessagesLengthRef.current) {
-      const newMessages = messages.slice(prevMessagesLengthRef.current)
-      for (const msg of newMessages) {
-        if (msg.role === 'assistant' && msg.isYouTube && ttsEnabled && msg.content) {
-          playTTS(msg.content, msg.id)
-        }
-      }
-    }
-    prevMessagesLengthRef.current = messages.length
-  }, [messages])
-
   const handleStopYoutube = async () => {
     try {
       await youtubeChatApi.stopSession()
@@ -259,6 +194,29 @@ export default function ChatPage() {
       setError('Failed to stop YouTube chat session')
     }
   }
+  const toggleTTSEnabled = async () => {
+    const newValue = !ttsEnabled
+    try {
+      await fetch('/api/tts/settings/update/', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          questioner_enabled: newValue,
+          responder_enabled: newValue,
+        }),
+      })
+      await tts.reloadSettings()
+      if (newValue) {
+        // Unlock audio when enabling TTS
+        await tts.unlockAudio()
+      } else {
+        tts.clearQueue()
+      }
+    } catch (err) {
+      console.error('Failed to toggle TTS:', err)
+    }
+  }
+
 
   const handleSend = async () => {
     if (!input.trim() || loading || !selectedCharacter) return
@@ -291,10 +249,14 @@ export default function ChatPage() {
 
       setMessages((prev) => [...prev, assistantMessage])
 
-      // Auto-play TTS if enabled
-      if (ttsEnabled && response.response) {
-        playTTS(response.response, response.message_id)
-      }
+      // Speak the questioner (this message) + responder (AI reply)
+      tts.speakExchange({
+        questioner_text: userMessage.content,
+        questioner_author: userName || 'You',
+        responder_text: response.response,
+        source: 'chat',
+        source_id: response.message_id,
+      })
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to send message')
     } finally {
@@ -314,7 +276,7 @@ export default function ChatPage() {
       return <Bot className="h-4 w-4" />
     }
     if (msg.isYouTube && msg.author) {
-      return msg.author.charAt(1).toUpperCase() // @username -> U
+      return msg.author.charAt(1).toUpperCase()
     }
     return <User className="h-4 w-4" />
   }
@@ -475,31 +437,27 @@ export default function ChatPage() {
 
       {/* Main Chat Area */}
       <main className="flex-1 flex flex-col">
-        {/* TTS Controls Header */}
-        {selectedCharacter && (
-          <header className="h-14 border-b border-border bg-surface px-6 flex items-center justify-end gap-2">
-            <select
-              value={ttsVoice}
-              onChange={(e) => handleVoiceChange(e.target.value)}
-              className="text-xs bg-surface-light border border-border rounded px-2 py-1 text-text-muted focus:outline-none focus:border-primary"
-            >
-              <optgroup label="Thai">
-                <option value="th-TH-PremwadeeNeural">Thai Female (Premwadee)</option>
-                <option value="th-TH-NiwatNeural">Thai Male (Niwat)</option>
-              </optgroup>
-              <optgroup label="English">
-                <option value="en-US-AriaNeural">US Aria (Female)</option>
-                <option value="en-US-GuyNeural">US Guy (Male)</option>
-                <option value="en-US-JennyNeural">US Jenny (Female)</option>
-                <option value="en-US-MichelleNeural">US Michelle (Female)</option>
-                <option value="en-GB-SoniaNeural">UK Sonia (Female)</option>
-                <option value="en-GB-RyanNeural">UK Ryan (Male)</option>
-              </optgroup>
-              <optgroup label="Japanese">
-                <option value="ja-JP-NanamiNeural">JP Nanami (Female)</option>
-                <option value="ja-JP-KeitaNeural">JP Keita (Male)</option>
-              </optgroup>
-            </select>
+        {/* Header with Navigation */}
+        <header className="h-14 border-b border-border bg-surface px-6 flex items-center justify-between gap-4">
+          <nav className="flex items-center gap-1">
+            <Link to="/chat" className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg bg-primary/20 text-primary">
+              <MessageSquare className="h-4 w-4" />
+              <span>Chat</span>
+            </Link>
+            <Link to="/characters" className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg text-text-muted hover:bg-surface-light hover:text-text">
+              <Sparkles className="h-4 w-4" />
+              <span>Characters</span>
+            </Link>
+            <Link to="/settings" className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg text-text-muted hover:bg-surface-light hover:text-text">
+              <Settings className="h-4 w-4" />
+              <span>Provider Settings</span>
+            </Link>
+            <Link to="/tts-settings" className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg text-text-muted hover:bg-surface-light hover:text-text">
+              <Settings className="h-4 w-4" />
+              <span>TTS Settings</span>
+            </Link>
+          </nav>
+          <div className="flex items-center gap-2">
             <Button
               onClick={toggleTTSEnabled}
               variant={ttsEnabled ? 'default' : 'outline'}
@@ -520,7 +478,44 @@ export default function ChatPage() {
                 <span className="text-xs text-text-muted">{ytSession.messages_received} msgs</span>
               </div>
             )}
-          </header>
+          </div>
+        </header>
+
+        {/* TTS Status Bar — show what is currently being spoken */}
+        {tts.currentItem && (
+          <div className="flex items-center justify-between gap-3 border-b border-border bg-surface/70 px-6 py-2">
+            <div className="flex items-center gap-2 min-w-0 text-xs">
+              {tts.currentItem.type === 'questioner' ? (
+                <User className="h-3.5 w-3.5 text-red-400 flex-shrink-0" />
+              ) : (
+                <Bot className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+              )}
+              {tts.currentItem.type === 'questioner' ? (
+                <>
+                  <span className="text-text-muted flex-shrink-0">🔊 ผู้ถาม:</span>
+                  <span className="text-text truncate">
+                    {tts.currentItem.author_name
+                      ? `${tts.currentItem.author_name}: ${tts.currentItem.text}`
+                      : tts.currentItem.text}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="text-text-muted flex-shrink-0">🔊 ผู้ตอบ:</span>
+                  <span className="text-text truncate">{tts.currentItem.text}</span>
+                </>
+              )}
+            </div>
+            <Button
+              onClick={() => tts.skip()}
+              variant="ghost"
+              size="sm"
+              className="flex items-center gap-1 flex-shrink-0"
+            >
+              <SkipForward className="h-3.5 w-3.5" />
+              <span className="text-xs">Skip</span>
+            </Button>
+          </div>
         )}
 
         {/* Messages */}
@@ -559,7 +554,6 @@ export default function ChatPage() {
                 <div
                   className={`max-w-[70%] rounded-2xl px-4 py-3 ${getBubbleStyle(msg)}`}
                 >
-                  {/* Author label for YouTube messages */}
                   {msg.isYouTube && msg.author && (
                     <div className="flex items-center gap-2 mb-1">
                       {msg.isSuperChat && (
@@ -581,7 +575,6 @@ export default function ChatPage() {
                       <span className="text-[10px] text-red-400/60">via YouTube</span>
                     </div>
                   )}
-                  {/* Username label for user messages */}
                   {msg.role === 'user' && !msg.isYouTube && userName && (
                     <div className="mb-1">
                       <span className="text-xs font-medium text-white/90">
@@ -594,21 +587,6 @@ export default function ChatPage() {
                     <p className={`text-xs ${msg.role === 'user' && !msg.isYouTube ? 'text-white/70' : 'text-text-muted'}`}>
                       {getTimeString(msg.timestamp)}
                     </p>
-                    {/* TTS button for assistant messages */}
-                    {msg.role === 'assistant' && (
-                      <button
-                        onClick={() => playTTS(msg.content, msg.id)}
-                        disabled={ttsLoading === msg.id}
-                        className="text-text-muted hover:text-primary transition-colors p-1 rounded hover:bg-surface-light"
-                        title="Play TTS"
-                      >
-                        {ttsLoading === msg.id ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <Volume2 className="h-3 w-3" />
-                        )}
-                      </button>
-                    )}
                   </div>
                 </div>
               </div>

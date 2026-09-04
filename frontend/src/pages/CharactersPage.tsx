@@ -5,7 +5,7 @@ import type { Character } from '@/types'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { ArrowLeft, Plus, Pencil, Trash2, X, Sparkles } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, Sparkles, MessageSquare, Settings } from 'lucide-react'
 
 const LANGUAGES = [
   { value: 'thai', label: '🇹🇭 ไทย (Thai)' },
@@ -49,46 +49,26 @@ const emptyForm: FormData = {
 export default function CharactersPage() {
   const { id: editId } = useParams()
   const navigate = useNavigate()
-  const isNew = window.location.pathname === '/characters/new'
-  const isEdit = !!editId
-  const showForm = isNew || isEdit
-
   const [characters, setCharacters] = useState<Character[]>([])
   const [loading, setLoading] = useState(true)
-  const [formData, setFormData] = useState(emptyForm)
-
-  // AI Prompt Modal state
+  const [saving, setSaving] = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [isEdit, setIsEdit] = useState(false)
+  const [formData, setFormData] = useState<FormData>(emptyForm)
   const [showAiModal, setShowAiModal] = useState(false)
   const [aiPromptCharacter, setAiPromptCharacter] = useState<Character | null>(null)
   const [aiPromptText, setAiPromptText] = useState('')
-  const [aiPromptLoading, setAiPromptLoading] = useState(false)
   const [aiPromptStats, setAiPromptStats] = useState<{ messages_analyzed: number; total_messages: number } | null>(null)
 
   useEffect(() => {
     loadCharacters()
   }, [])
 
-  // Load character data when editing
   useEffect(() => {
     if (editId) {
-      const char = characters.find(c => c.id === editId)
-      if (char) {
-        setFormData({
-          name: char.name,
-          name_th: char.name_th || '',
-          name_en: char.name_en || '',
-          description: char.description,
-          system_prompt: char.system_prompt,
-          avatar_url: char.avatar_url,
-          response_language: (char as any).response_language || 'thai',
-          response_length: (char as any).response_length || 'short',
-          enable_per_user_memory: (char as any).enable_per_user_memory ?? true,
-          memory_duration_days: (char as any).memory_duration_days ?? 3,
-          system_prompt_ai: (char as any).system_prompt_ai || '',
-        })
-      }
+      loadCharacter(editId)
     }
-  }, [editId, characters])
+  }, [editId])
 
   const loadCharacters = async () => {
     try {
@@ -102,18 +82,54 @@ export default function CharactersPage() {
     }
   }
 
+  const loadCharacter = async (id: string) => {
+    try {
+      const char = await characterApi.getById(id)
+      setFormData({
+        name: char.name || '',
+        name_th: char.name_th || '',
+        name_en: char.name_en || '',
+        description: char.description || '',
+        system_prompt: char.system_prompt || '',
+        avatar_url: char.avatar_url || '',
+        response_language: char.response_language || 'thai',
+        response_length: char.response_length || 'short',
+        enable_per_user_memory: char.enable_per_user_memory,
+        memory_duration_days: char.memory_duration_days,
+        system_prompt_ai: char.system_prompt_ai || '',
+      })
+      setIsEdit(true)
+      setShowForm(true)
+    } catch {
+      console.error('Failed to load character')
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      if (editId) {
+      setSaving(true)
+      if (isEdit && editId) {
         await characterApi.update(editId, formData)
       } else {
-        await characterApi.create({ ...formData, is_active: true })
+        await characterApi.create(formData)
       }
-      navigate('/characters')
+      setShowForm(false)
+      setIsEdit(false)
+      setFormData(emptyForm)
+      loadCharacters()
     } catch {
       console.error('Failed to save character')
+    } finally {
+      setSaving(false)
     }
+  }
+
+  const handleCancel = () => {
+    setShowForm(false)
+    setIsEdit(false)
+    setFormData(emptyForm)
+    navigate('/characters')
   }
 
   const handleDelete = async (id: string) => {
@@ -126,25 +142,17 @@ export default function CharactersPage() {
     }
   }
 
-  const handleCancel = () => {
-    navigate('/characters')
-  }
-
-  const handleGenerateAiPrompt = async (char: Character) => {
-    setAiPromptCharacter(char)
-    setAiPromptText('')
+  const handleGeneratePrompt = async (character: Character) => {
+    setAiPromptCharacter(character)
+    setAiPromptText(character.system_prompt_ai || '')
     setAiPromptStats(null)
-    setAiPromptLoading(true)
     setShowAiModal(true)
-
     try {
-      const result = await characterApi.generatePrompt(char.id)
+      const result = await characterApi.generatePrompt(character.id)
       setAiPromptText(result.system_prompt_ai)
       setAiPromptStats({ messages_analyzed: result.messages_analyzed, total_messages: result.total_messages })
     } catch (err: any) {
-      setAiPromptText('Error: ' + (err.response?.data?.error || 'Failed to generate prompt'))
-    } finally {
-      setAiPromptLoading(false)
+      console.error('Failed to generate prompt:', err.response?.data?.error)
     }
   }
 
@@ -160,320 +168,221 @@ export default function CharactersPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background p-8">
-      <div className="max-w-4xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link to="/chat" className="text-text-muted hover:text-text transition-colors">
-              <ArrowLeft className="h-5 w-5" />
-            </Link>
+    <div className="min-h-screen bg-background">
+      {/* Simple Navbar */}
+      <header className="h-12 border-b border-border bg-surface px-4 flex items-center gap-4">
+        <span className="font-semibold text-sm text-text">MENA AI VTuber</span>
+        <nav className="flex items-center gap-1 ml-4">
+          <Link to="/chat" className="flex items-center gap-1 px-3 py-1 text-sm text-text-muted hover:text-text rounded hover:bg-surface-light">
+            <MessageSquare className="h-3 w-3" />Chat
+          </Link>
+          <Link to="/characters" className="flex items-center gap-1 px-3 py-1 text-sm text-primary bg-primary/10 rounded">
+            <Sparkles className="h-3 w-3" />Characters
+          </Link>
+          <Link to="/settings" className="flex items-center gap-1 px-3 py-1 text-sm text-text-muted hover:text-text rounded hover:bg-surface-light">
+            <Settings className="h-3 w-3" />Provider Settings
+          </Link>
+        </nav>
+      </header>
+
+      <div className="p-8">
+        <div className="max-w-4xl mx-auto space-y-6">
+          <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold">Characters</h1>
               <p className="text-text-muted">Manage your AI VTuber characters</p>
             </div>
+            <Button onClick={() => navigate('/characters/new')}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Character
+            </Button>
           </div>
-          <Button onClick={() => navigate('/characters/new')}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Character
-          </Button>
-        </div>
 
-        {/* Form */}
-        {showForm && (
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>{isEdit ? 'Edit Character' : 'New Character'}</CardTitle>
-                <Button variant="ghost" size="icon" onClick={handleCancel}>
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Name (English)</label>
-                    <Input
-                      value={formData.name_en}
-                      onChange={(e) => setFormData({ ...formData, name_en: e.target.value })}
-                      placeholder="e.g. Mena"
-                    />
+          {showForm && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle>{isEdit ? 'Edit Character' : 'New Character'}</CardTitle>
+                  <Button variant="ghost" size="icon" onClick={handleCancel}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Name (English)</label>
+                      <Input value={formData.name_en} onChange={(e) => setFormData({ ...formData, name_en: e.target.value })} placeholder="e.g. Mena" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Name (Thai)</label>
+                      <Input value={formData.name_th} onChange={(e) => setFormData({ ...formData, name_th: e.target.value })} placeholder="e.g. มีนา" />
+                    </div>
+                    <div className="space-y-2 col-span-2">
+                      <label className="text-sm font-medium">Display Name</label>
+                      <Input value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="Character name" required />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Avatar URL</label>
+                      <Input value={formData.avatar_url} onChange={(e) => setFormData({ ...formData, avatar_url: e.target.value })} placeholder="https://..." />
+                    </div>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Name (Thai)</label>
-                    <Input
-                      value={formData.name_th}
-                      onChange={(e) => setFormData({ ...formData, name_th: e.target.value })}
-                      placeholder="e.g. มีนา"
-                    />
-                  </div>
-                  <div className="space-y-2 col-span-2">
-                    <label className="text-sm font-medium">Display Name</label>
-                    <Input
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      placeholder="Character name"
-                      required
-                    />
+                    <label className="text-sm font-medium">Description</label>
+                    <Input value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} placeholder="Short description" />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Avatar URL</label>
-                    <Input
-                      value={formData.avatar_url}
-                      onChange={(e) => setFormData({ ...formData, avatar_url: e.target.value })}
-                      placeholder="https://..."
+                    <label className="text-sm font-medium">System Prompt</label>
+                    <textarea
+                      value={formData.system_prompt}
+                      onChange={(e) => setFormData({ ...formData, system_prompt: e.target.value })}
+                      placeholder="Define the character's personality and behavior..."
+                      rows={4}
+                      className="w-full rounded-lg border border-border bg-surface-light px-3 py-2 text-sm placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                     />
                   </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Description</label>
-                  <Input
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    placeholder="Short description"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">System Prompt</label>
-                  <textarea
-                    value={formData.system_prompt}
-                    onChange={(e) => setFormData({ ...formData, system_prompt: e.target.value })}
-                    placeholder="Define the character's personality and behavior..."
-                    rows={4}
-                    className="w-full rounded-lg border border-border bg-surface-light px-3 py-2 text-sm placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  />
-                </div>
-
-                {/* AI-Generated Prompt Section */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-sm font-medium">System Prompt AI</label>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        if (editId) {
-                          const char = characters.find(c => c.id === editId)
-                          if (char) handleGenerateAiPrompt(char)
-                        }
-                      }}
-                      disabled={!editId}
-                    >
-                      <Sparkles className="h-3 w-3 mr-1" />
-                      Generate
-                    </Button>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Language</label>
+                      <select
+                        value={formData.response_language}
+                        onChange={(e) => setFormData({ ...formData, response_language: e.target.value })}
+                        className="w-full rounded-lg border border-border bg-surface-light px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      >
+                        {LANGUAGES.map((lang) => (
+                          <option key={lang.value} value={lang.value}>{lang.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Response Length</label>
+                      <select
+                        value={formData.response_length}
+                        onChange={(e) => setFormData({ ...formData, response_length: e.target.value as any })}
+                        className="w-full rounded-lg border border-border bg-surface-light px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      >
+                        <option value="short">Short (1-2 ประโยค)</option>
+                        <option value="normal">Normal (2-4 ประโยค)</option>
+                        <option value="long">Long (เต็มที่)</option>
+                      </select>
+                    </div>
                   </div>
-                  <textarea
-                    value={formData.system_prompt_ai}
-                    onChange={(e) => setFormData({ ...formData, system_prompt_ai: e.target.value })}
-                    placeholder="AI-generated prompt based on chat history (click Generate to create)..."
-                    rows={6}
-                    className="w-full rounded-lg border border-border bg-surface-light px-3 py-2 text-sm placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary font-mono text-xs"
-                  />
-                  <p className="text-xs text-text-muted">AI สร้างจาก chat history — รวมกับ System Prompt ตอนคุย</p>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Response Language</label>
-                  <select
-                    value={formData.response_language}
-                    onChange={(e) => setFormData({ ...formData, response_language: e.target.value })}
-                    className="w-full rounded-lg border border-border bg-surface-light px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  >
-                    {LANGUAGES.map((lang) => (
-                      <option key={lang.value} value={lang.value}>{lang.label}</option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-text-muted">ภาษาที่ตัวละครจะใช้ตอบกลับเท่านั้น</p>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">ความยาวคำตอบ</label>
-                  <select
-                    value={formData.response_length}
-                    onChange={(e) => setFormData({ ...formData, response_length: e.target.value as 'short' | 'normal' | 'long' | 'custom' })}
-                    className="w-full rounded-lg border border-border bg-surface-light px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  >
-                    <option value="short">🎯 สั้น (1-2 ประโยค)</option>
-                    <option value="normal">📝 ปกติ (2-4 ประโยค)</option>
-                    <option value="long">📖 ยาว (เต็มที่)</option>
-                    <option value="custom">⚙️ Custom</option>
-                  </select>
-                  <p className="text-xs text-text-muted">สั้น=เร็ว+ประหยัดโควต้า, ปกติ=สมดุล, ยาว=ละเอียด</p>
-                </div>
-
-                {/* Memory Settings */}
-                <div className="space-y-3 pt-2 border-t border-border">
-                  <h3 className="text-sm font-semibold text-text">🧠 Memory Settings</h3>
-                  
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="enableMemory"
-                      checked={formData.enable_per_user_memory}
-                      onChange={(e) => setFormData({ ...formData, enable_per_user_memory: e.target.checked })}
-                      className="rounded border-border"
-                    />
-                    <label htmlFor="enableMemory" className="text-sm text-text">
-                      Enable per-user memory
-                    </label>
-                  </div>
-                  <p className="text-xs text-text-muted">จำผู้ใช้แต่ละคนแยกกัน (ระบุชื่อผู้ใช้เพื่อเรียกใช้)</p>
-
-                  {formData.enable_per_user_memory && (
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium text-text-muted">Memory duration (days)</label>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="flex items-center gap-2">
                       <input
+                        type="checkbox"
+                        id="enable_memory"
+                        checked={formData.enable_per_user_memory}
+                        onChange={(e) => setFormData({ ...formData, enable_per_user_memory: e.target.checked })}
+                        className="rounded border-border"
+                      />
+                      <label htmlFor="enable_memory" className="text-sm font-medium">Per-user Memory</label>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Memory Duration (days)</label>
+                      <Input
                         type="number"
-                        min="1"
-                        max="30"
                         value={formData.memory_duration_days}
                         onChange={(e) => setFormData({ ...formData, memory_duration_days: parseInt(e.target.value) || 3 })}
-                        className="w-full rounded-lg border border-border bg-surface-light px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        min="1"
+                        max="30"
                       />
-                      <p className="text-xs text-text-muted">ระยะเวลาที่จะจำข้อความเดิมได้ (วัน)</p>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex gap-3">
-                  <Button type="submit">
-                    {isEdit ? 'Update' : 'Create'}
-                  </Button>
-                  <Button type="button" variant="outline" onClick={handleCancel}>
-                    Cancel
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Characters List */}
-        {loading ? (
-          <div className="text-center py-12">
-            <p className="text-text-muted">Loading characters...</p>
-          </div>
-        ) : characters.length === 0 ? (
-          <Card>
-            <CardContent className="pt-6 text-center py-12">
-              <p className="text-text-muted">No characters yet. Create your first one!</p>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {characters.map((char) => (
-              <Card key={char.id} className="hover:border-primary/50 transition-colors">
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="h-12 w-12 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-bold text-lg">
-                        {(char.name_th || char.name)[0]}
-                      </div>
-                      <div>
-                        <CardTitle className="text-base">{char.name_th || char.name}</CardTitle>
-                        <CardDescription className="text-xs">{char.description}</CardDescription>
-                      </div>
-                    </div>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="icon" onClick={() => navigate(`/characters/edit/${char.id}`)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleDelete(char.id)}>
-                        <Trash2 className="h-4 w-4 text-error" />
-                      </Button>
                     </div>
                   </div>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-text-muted line-clamp-2">{char.system_prompt}</p>
-                  <div className="flex items-center gap-3 mt-2 flex-wrap">
-                    <p className="text-xs text-primary">
-                      🌐 {(LANGUAGES.find(l => l.value === (char as any).response_language)?.label) || '🇹🇭 ไทย (Thai)'}
-                    </p>
-                    {(char as any).enable_per_user_memory !== false && (
-                      <p className="text-xs text-secondary">
-                        🧠 {(char as any).memory_duration_days || 3} วัน
-                      </p>
-                    )}
-                    {(char as any).system_prompt_ai && (
-                      <p className="text-xs text-accent">
-                        ✨ AI Prompt
-                      </p>
-                    )}
+                  <div className="flex gap-3">
+                    <Button type="submit" disabled={saving}>
+                      {saving ? 'Saving...' : (isEdit ? 'Update' : 'Create')}
+                    </Button>
+                    <Button type="button" variant="outline" onClick={handleCancel}>
+                      Cancel
+                    </Button>
                   </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-      </div>
+                </form>
+              </CardContent>
+            </Card>
+          )}
 
-      {/* AI Prompt Modal */}
-      {showAiModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-surface border border-border rounded-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
-            <div className="p-4 border-b border-border flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-accent" />
-                <h2 className="font-semibold">
-                  System Prompt AI — {aiPromptCharacter?.name_th || aiPromptCharacter?.name}
-                </h2>
-              </div>
-              <Button variant="ghost" size="icon" onClick={() => setShowAiModal(false)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            
-            <div className="p-4 flex-1 overflow-y-auto space-y-3">
-              {aiPromptLoading ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="flex items-center gap-3">
-                    <div className="flex gap-1">
-                      <span className="h-2 w-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <span className="h-2 w-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '150ms' }} />
-                      <span className="h-2 w-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '300ms' }} />
-                    </div>
-                    <span className="text-sm text-text-muted">AI กำลังวิเคราะห์ chat history...</span>
-                  </div>
-                </div>
+          {!showForm && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {loading ? (
+                <p className="text-text-muted">Loading...</p>
+              ) : characters.length === 0 ? (
+                <Card className="col-span-2">
+                  <CardContent className="pt-6 text-center py-12">
+                    <p className="text-text-muted">No characters yet. Click "Add Character" to create one!</p>
+                  </CardContent>
+                </Card>
               ) : (
-                <>
-                  {aiPromptStats && (
-                    <div className="bg-surface-light rounded-lg p-3 text-xs text-text-muted">
-                      วิเคราะห์ {aiPromptStats.messages_analyzed} จาก {aiPromptStats.total_messages} ข้อความทั้งหมด
-                    </div>
-                  )}
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">System Prompt AI</label>
-                    <textarea
-                      value={aiPromptText}
-                      onChange={(e) => setAiPromptText(e.target.value)}
-                      rows={15}
-                      className="w-full rounded-lg border border-border bg-surface-light px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary font-mono"
-                    />
-                    <p className="text-xs text-text-muted">AI สร้างจาก chat history — รวมกับ System Prompt ตอนคุย</p>
-                  </div>
-                </>
+                characters.map((char) => (
+                  <Card key={char.id} className="hover:border-primary/50 transition-colors">
+                    <CardHeader>
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <CardTitle className="text-lg">{char.name_th || char.name}</CardTitle>
+                          <CardDescription>{char.description || 'No description'}</CardDescription>
+                        </div>
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="icon" onClick={() => handleGeneratePrompt(char)}>
+                            <Sparkles className="h-4 w-4 text-secondary" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => navigate(`/characters/edit/${char.id}`)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => handleDelete(char.id)}>
+                            <Trash2 className="h-4 w-4 text-error" />
+                          </Button>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex items-center gap-2 text-xs text-text-muted">
+                        <span>{char.response_language}</span>
+                        <span>•</span>
+                        <span>{char.response_length}</span>
+                        <span>•</span>
+                        <span>{char.memory_duration_days}d memory</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
               )}
             </div>
-            
-            <div className="p-4 border-t border-border flex justify-end gap-3">
-              <Button variant="outline" onClick={() => setShowAiModal(false)}>
-                ยกเลิก
-              </Button>
-              <Button onClick={handleSaveAiPrompt} disabled={aiPromptLoading || !aiPromptText.trim()}>
-                บันทึก
-              </Button>
+          )}
+
+          {showAiModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center">
+              <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowAiModal(false)} />
+              <div className="relative bg-surface border border-border rounded-2xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden">
+                <div className="flex items-center justify-between p-6 border-b border-border">
+                  <div>
+                    <h2 className="text-lg font-semibold">Generate AI Prompt</h2>
+                    <p className="text-xs text-text-muted">
+                      AI will analyze chat history and generate a character prompt
+                      {aiPromptStats && ` (${aiPromptStats.messages_analyzed}/${aiPromptStats.total_messages} messages)`}
+                    </p>
+                  </div>
+                  <button onClick={() => setShowAiModal(false)} className="p-2 rounded-lg hover:bg-surface-light">
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+                <div className="p-6">
+                  <textarea
+                    value={aiPromptText}
+                    onChange={(e) => setAiPromptText(e.target.value)}
+                    rows={12}
+                    className="w-full rounded-lg border border-border bg-surface-light px-3 py-2 text-sm placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary font-mono"
+                  />
+                </div>
+                <div className="flex items-center justify-end gap-3 p-6 border-t border-border">
+                  <Button variant="outline" onClick={() => setShowAiModal(false)}>Cancel</Button>
+                  <Button onClick={handleSaveAiPrompt}>Save Prompt</Button>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   )
 }

@@ -11,13 +11,14 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework.request import Request
 
-from .models import Character, ChatMessage, LLMProvider
+from .models import Character, ChatMessage, LLMProvider, TTSSettings
 from .serializers import (
     CharacterSerializer,
     ChatMessageSerializer,
     ChatRequestSerializer,
     ChatResponseSerializer,
     LLMProviderSerializer,
+    TTSSettingsSerializer,
 )
 from .services import LLMService, LLMServiceError
 

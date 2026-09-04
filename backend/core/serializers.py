@@ -3,7 +3,7 @@ Serializers for core models.
 """
 
 from rest_framework import serializers
-from .models import Character, ChatMessage, LLMProvider
+from .models import Character, ChatMessage, LLMProvider, TTSSettings
 
 
 class CharacterSerializer(serializers.ModelSerializer):
@@ -44,3 +44,10 @@ class LLMProviderSerializer(serializers.ModelSerializer):
         model = LLMProvider
         fields = '__all__'
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class TTSSettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TTSSettings
+        fields = '__all__'
+        read_only_fields = ['id', 'updated_at']
