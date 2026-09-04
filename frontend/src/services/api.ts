@@ -34,6 +34,11 @@ export const characterApi = {
   delete: async (id: string): Promise<void> => {
     await api.delete(`/characters/${id}/`);
   },
+
+  generatePrompt: async (id: string): Promise<{ system_prompt_ai: string; messages_analyzed: number; total_messages: number }> => {
+    const { data } = await api.post(`/characters/${id}/generate-prompt/`);
+    return data;
+  },
 };
 
 export const chatApi = {

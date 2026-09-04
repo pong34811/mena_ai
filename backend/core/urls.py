@@ -20,6 +20,7 @@ urlpatterns = [
     path('chat/', views.chat, name='chat'),
     path('health/', views.health_check, name='health-check'),
     path('llm-status/', views.llm_status, name='llm-status'),
+    path('characters/<str:character_id>/generate-prompt/', views.generate_character_prompt, name='generate-character-prompt'),
     # YouTube live chat endpoints
     path('yt-chat/start/', youtube_views.start_youtube_chat, name='yt-chat-start'),
     path('yt-chat/stop/', youtube_views.stop_youtube_chat, name='yt-chat-stop'),

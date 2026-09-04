@@ -7,6 +7,8 @@ from .models import Character, ChatMessage, LLMProvider
 
 
 class CharacterSerializer(serializers.ModelSerializer):
+    system_prompt_ai = serializers.CharField(max_length=8000, required=False, allow_blank=True)
+    
     class Meta:
         model = Character
         fields = '__all__'
@@ -25,6 +27,7 @@ class ChatRequestSerializer(serializers.Serializer):
     
     character_id = serializers.UUIDField(required=True)
     message = serializers.CharField(required=True)
+    user_name = serializers.CharField(required=False, default='', max_length=100)
     stream = serializers.BooleanField(default=False)
 
 

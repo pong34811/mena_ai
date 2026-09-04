@@ -26,6 +26,7 @@ export default function ChatPage() {
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null)
   const [messages, setMessages] = useState<DisplayMessage[]>([])
   const [input, setInput] = useState('')
+  const [userName, setUserName] = useState(() => localStorage.getItem('mena_user_name') || '')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -202,6 +203,7 @@ export default function ChatPage() {
       const response = await chatApi.sendMessage({
         character_id: selectedCharacter.id,
         message: userMessage.content,
+        user_name: userName,
       })
 
       const assistantMessage: DisplayMessage = {
@@ -506,22 +508,37 @@ export default function ChatPage() {
         {/* Input */}
         {selectedCharacter && (
           <div className="border-t border-border bg-surface p-4">
-            <div className="flex gap-3 max-w-4xl mx-auto">
-              <Input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={ytSession ? `Message ${selectedCharacter.name} or wait for YouTube chat...` : `Message ${selectedCharacter.name}...`}
-                disabled={loading}
-                className="flex-1"
-              />
-              <Button
-                onClick={handleSend}
-                disabled={loading || !input.trim()}
-                size="icon"
-              >
-                <Send className="h-4 w-4" />
-              </Button>
+            <div className="max-w-4xl mx-auto space-y-2">
+              <div className="flex items-center gap-2">
+                <User className="h-4 w-4 text-text-muted" />
+                <input
+                  type="text"
+                  value={userName}
+                  onChange={(e) => {
+                    setUserName(e.target.value)
+                    localStorage.setItem('mena_user_name', e.target.value)
+                  }}
+                  placeholder="Your name (for memory)"
+                  className="text-xs bg-transparent border-b border-border focus:border-primary outline-none px-1 py-0.5 text-text-muted focus:text-text transition-colors w-48"
+                />
+              </div>
+              <div className="flex gap-3">
+                <Input
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder={ytSession ? `Message ${selectedCharacter.name} or wait for YouTube chat...` : `Message ${selectedCharacter.name}...`}
+                  disabled={loading}
+                  className="flex-1"
+                />
+                <Button
+                  onClick={handleSend}
+                  disabled={loading || !input.trim()}
+                  size="icon"
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </div>
         )}

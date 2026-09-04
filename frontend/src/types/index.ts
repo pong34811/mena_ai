@@ -5,8 +5,11 @@ export interface Character {
   name: string;
   description: string;
   system_prompt: string;
+  system_prompt_ai: string;
   avatar_url: string;
   response_language: string;
+  enable_per_user_memory: boolean;
+  memory_duration_days: number;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -17,12 +20,14 @@ export interface ChatMessage {
   character: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  user_name?: string;
   created_at: string;
 }
 
 export interface ChatRequest {
   character_id: string;
   message: string;
+  user_name?: string;
   stream?: boolean;
 }
 

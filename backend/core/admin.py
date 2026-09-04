@@ -20,7 +20,7 @@ class CharacterAdmin(admin.ModelAdmin):
             'fields': ('name', 'description', 'avatar_url', 'is_active')
         }),
         ('AI Configuration', {
-            'fields': ('system_prompt',),
+            'fields': ('system_prompt', 'system_prompt_ai'),
             'description': 'System prompt defines the character personality and behavior'
         }),
         ('Metadata', {
