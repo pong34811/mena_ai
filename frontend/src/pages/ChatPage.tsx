@@ -26,7 +26,7 @@ export default function ChatPage() {
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null)
   const [messages, setMessages] = useState<DisplayMessage[]>([])
   const [input, setInput] = useState('')
-  const [userName, setUserName] = useState(() => localStorage.getItem('mena_user_name') || '')
+  const [userName, setUserName] = useState(() => localStorage.getItem('mena_user_name') || 'Dev')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -579,6 +579,14 @@ export default function ChatPage() {
                         {msg.author}
                       </span>
                       <span className="text-[10px] text-red-400/60">via YouTube</span>
+                    </div>
+                  )}
+                  {/* Username label for user messages */}
+                  {msg.role === 'user' && !msg.isYouTube && userName && (
+                    <div className="mb-1">
+                      <span className="text-xs font-medium text-white/90">
+                        {userName}
+                      </span>
                     </div>
                   )}
                   <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
