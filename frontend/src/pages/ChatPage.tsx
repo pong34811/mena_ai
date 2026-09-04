@@ -43,7 +43,7 @@ export default function ChatPage() {
   // TTS state
   const [ttsEnabled, setTtsEnabled] = useState(() => localStorage.getItem('mena_tts_enabled') === 'true')
   const [ttsLoading, setTtsLoading] = useState<string | null>(null)
-  const [ttsVoice, setTtsVoice] = useState(() => localStorage.getItem('mena_tts_voice') || 'th-TH-Neural2-A')
+  const [ttsVoice, setTtsVoice] = useState(() => localStorage.getItem('mena_tts_voice') || 'th-TH-PremwadeeNeural')
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
   useEffect(() => {
@@ -261,6 +261,11 @@ export default function ChatPage() {
       }
 
       setMessages((prev) => [...prev, assistantMessage])
+
+      // Auto-play TTS if enabled
+      if (ttsEnabled && response.response) {
+        playTTS(response.response, response.message_id)
+      }
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to send message')
     } finally {

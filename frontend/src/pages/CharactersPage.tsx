@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useParams, useNavigate } from 'react-router-dom'
 import { characterApi } from '@/services/api'
 import type { Character } from '@/types'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card'
@@ -18,21 +18,27 @@ const LANGUAGES = [
   { value: 'german', label: '🇩🇪 เยอรมัน (German)' },
 ]
 
+const emptyForm = {
+  name: '',
+  description: '',
+  system_prompt: '',
+  avatar_url: '',
+  response_language: 'thai',
+  enable_per_user_memory: true,
+  memory_duration_days: 3,
+  system_prompt_ai: '',
+}
+
 export default function CharactersPage() {
+  const { id: editId } = useParams()
+  const navigate = useNavigate()
+  const isNew = window.location.pathname === '/characters/new'
+  const isEdit = !!editId
+  const showForm = isNew || isEdit
+
   const [characters, setCharacters] = useState<Character[]>([])
   const [loading, setLoading] = useState(true)
-  const [showForm, setShowForm] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    system_prompt: '',
-    avatar_url: '',
-    response_language: 'thai',
-    enable_per_user_memory: true,
-    memory_duration_days: 3,
-    system_prompt_ai: '',
-  })
+  const [formData, setFormData] = useState(emptyForm)
 
   // AI Prompt Modal state
   const [showAiModal, setShowAiModal] = useState(false)
@@ -44,6 +50,25 @@ export default function CharactersPage() {
   useEffect(() => {
     loadCharacters()
   }, [])
+
+  // Load character data when editing
+  useEffect(() => {
+    if (editId) {
+      const char = characters.find(c => c.id === editId)
+      if (char) {
+        setFormData({
+          name: char.name,
+          description: char.description,
+          system_prompt: char.system_prompt,
+          avatar_url: char.avatar_url,
+          response_language: (char as any).response_language || 'thai',
+          enable_per_user_memory: (char as any).enable_per_user_memory ?? true,
+          memory_duration_days: (char as any).memory_duration_days ?? 3,
+          system_prompt_ai: (char as any).system_prompt_ai || '',
+        })
+      }
+    }
+  }, [editId, characters])
 
   const loadCharacters = async () => {
     try {
@@ -60,33 +85,15 @@ export default function CharactersPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      if (editingId) {
-        await characterApi.update(editingId, formData)
+      if (editId) {
+        await characterApi.update(editId, formData)
       } else {
         await characterApi.create({ ...formData, is_active: true })
       }
-      setShowForm(false)
-      setEditingId(null)
-      setFormData({ name: '', description: '', system_prompt: '', avatar_url: '', response_language: 'thai', enable_per_user_memory: true, memory_duration_days: 3, system_prompt_ai: '' })
-      loadCharacters()
+      navigate('/characters')
     } catch {
       console.error('Failed to save character')
     }
-  }
-
-  const handleEdit = (char: Character) => {
-    setEditingId(char.id)
-    setFormData({
-      name: char.name,
-      description: char.description,
-      system_prompt: char.system_prompt,
-      avatar_url: char.avatar_url,
-      response_language: (char as any).response_language || 'thai',
-      enable_per_user_memory: (char as any).enable_per_user_memory ?? true,
-      memory_duration_days: (char as any).memory_duration_days ?? 3,
-      system_prompt_ai: (char as any).system_prompt_ai || '',
-    })
-    setShowForm(true)
   }
 
   const handleDelete = async (id: string) => {
@@ -100,9 +107,7 @@ export default function CharactersPage() {
   }
 
   const handleCancel = () => {
-    setShowForm(false)
-    setEditingId(null)
-    setFormData({ name: '', description: '', system_prompt: '', avatar_url: '', response_language: 'thai', enable_per_user_memory: true, memory_duration_days: 3, system_prompt_ai: '' })
+    navigate('/characters')
   }
 
   const handleGenerateAiPrompt = async (char: Character) => {
@@ -148,7 +153,7 @@ export default function CharactersPage() {
               <p className="text-text-muted">Manage your AI VTuber characters</p>
             </div>
           </div>
-          <Button onClick={() => setShowForm(true)}>
+          <Button onClick={() => navigate('/characters/new')}>
             <Plus className="h-4 w-4 mr-2" />
             Add Character
           </Button>
@@ -159,7 +164,7 @@ export default function CharactersPage() {
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle>{editingId ? 'Edit Character' : 'New Character'}</CardTitle>
+                <CardTitle>{isEdit ? 'Edit Character' : 'New Character'}</CardTitle>
                 <Button variant="ghost" size="icon" onClick={handleCancel}>
                   <X className="h-4 w-4" />
                 </Button>
@@ -216,10 +221,12 @@ export default function CharactersPage() {
                       variant="ghost"
                       size="sm"
                       onClick={() => {
-                        const char = characters.find(c => c.id === editingId)
-                        if (char) handleGenerateAiPrompt(char)
+                        if (editId) {
+                          const char = characters.find(c => c.id === editId)
+                          if (char) handleGenerateAiPrompt(char)
+                        }
                       }}
-                      disabled={!editingId}
+                      disabled={!editId}
                     >
                       <Sparkles className="h-3 w-3 mr-1" />
                       Generate
@@ -285,7 +292,7 @@ export default function CharactersPage() {
 
                 <div className="flex gap-3">
                   <Button type="submit">
-                    {editingId ? 'Update' : 'Create'}
+                    {isEdit ? 'Update' : 'Create'}
                   </Button>
                   <Button type="button" variant="outline" onClick={handleCancel}>
                     Cancel
@@ -323,7 +330,7 @@ export default function CharactersPage() {
                       </div>
                     </div>
                     <div className="flex gap-1">
-                      <Button variant="ghost" size="icon" onClick={() => handleEdit(char)}>
+                      <Button variant="ghost" size="icon" onClick={() => navigate(`/characters/edit/${char.id}`)}>
                         <Pencil className="h-4 w-4" />
                       </Button>
                       <Button variant="ghost" size="icon" onClick={() => handleDelete(char.id)}>

@@ -12,6 +12,8 @@ function App() {
         <Route path="/chat" element={<ChatPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/characters" element={<CharactersPage />} />
+        <Route path="/characters/new" element={<CharactersPage />} />
+        <Route path="/characters/edit/:id" element={<CharactersPage />} />
       </Routes>
     </BrowserRouter>
   )
