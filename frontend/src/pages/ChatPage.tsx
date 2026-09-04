@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { chatApi, characterApi, youtubeChatApi } from '@/services/api'
+import { chatApi, characterApi, youtubeChatApi, ttsApi } from '@/services/api'
 import type { Character } from '@/types'
 import type { YouTubeChatSession } from '@/services/api'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { Send, User, Bot, ArrowLeft, Play, Square, Zap, Video } from 'lucide-react'
+import { Send, User, Bot, ArrowLeft, Play, Square, Zap, Video, Volume2, VolumeX, Loader2 } from 'lucide-react'
 
 interface DisplayMessage {
   id: string
@@ -39,6 +39,12 @@ export default function ChatPage() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const ytPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // TTS state
+  const [ttsEnabled, setTtsEnabled] = useState(() => localStorage.getItem('mena_tts_enabled') === 'true')
+  const [ttsLoading, setTtsLoading] = useState<string | null>(null)
+  const [ttsVoice, setTtsVoice] = useState(() => localStorage.getItem('mena_tts_voice') || 'th-TH-Neural2-A')
+  const audioRef = useRef<HTMLAudioElement | null>(null)
 
   useEffect(() => {
     loadCharacters()
@@ -149,6 +155,47 @@ export default function ChatPage() {
       if (match) return match[1]
     }
     return null
+  }
+
+  // TTS functions
+  const playTTS = async (text: string, messageId: string) => {
+    if (!ttsEnabled || !text.trim()) return
+    setTtsLoading(messageId)
+    try {
+      const blob = await ttsApi.chatMessage(text, selectedCharacter?.id, ttsVoice)
+      const url = URL.createObjectURL(blob)
+      if (audioRef.current) {
+        audioRef.current.pause()
+      }
+      const audio = new Audio(url)
+      audioRef.current = audio
+      audio.onended = () => {
+        URL.revokeObjectURL(url)
+        setTtsLoading(null)
+      }
+      audio.onerror = () => {
+        URL.revokeObjectURL(url)
+        setTtsLoading(null)
+      }
+      await audio.play()
+    } catch (err) {
+      console.error('TTS error:', err)
+      setTtsLoading(null)
+    }
+  }
+
+  const toggleTTSEnabled = () => {
+    const newValue = !ttsEnabled
+    setTtsEnabled(newValue)
+    localStorage.setItem('mena_tts_enabled', String(newValue))
+    if (!newValue && audioRef.current) {
+      audioRef.current.pause()
+    }
+  }
+
+  const handleVoiceChange = (voiceId: string) => {
+    setTtsVoice(voiceId)
+    localStorage.setItem('mena_tts_voice', voiceId)
   }
 
   const handleStartYoutube = async () => {
@@ -394,16 +441,44 @@ export default function ChatPage() {
 
       {/* Main Chat Area */}
       <main className="flex-1 flex flex-col">
-        {/* Chat Header */}
+        {/* TTS Controls Header */}
         {selectedCharacter && (
-          <header className="h-16 border-b border-border bg-surface px-6 flex items-center gap-4">
-            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-semibold">
-              {selectedCharacter.name[0]}
-            </div>
-            <div className="flex-1">
-              <h2 className="font-semibold">{selectedCharacter.name}</h2>
-              <p className="text-xs text-text-muted">{selectedCharacter.description}</p>
-            </div>
+          <header className="h-14 border-b border-border bg-surface px-6 flex items-center justify-end gap-2">
+            <select
+              value={ttsVoice}
+              onChange={(e) => handleVoiceChange(e.target.value)}
+              className="text-xs bg-surface-light border border-border rounded px-2 py-1 text-text-muted focus:outline-none focus:border-primary"
+            >
+              <optgroup label="Thai">
+                <option value="th-TH-PremwadeeNeural">Thai Female (Premwadee)</option>
+                <option value="th-TH-NiwatNeural">Thai Male (Niwat)</option>
+              </optgroup>
+              <optgroup label="English">
+                <option value="en-US-AriaNeural">US Aria (Female)</option>
+                <option value="en-US-GuyNeural">US Guy (Male)</option>
+                <option value="en-US-JennyNeural">US Jenny (Female)</option>
+                <option value="en-US-MichelleNeural">US Michelle (Female)</option>
+                <option value="en-GB-SoniaNeural">UK Sonia (Female)</option>
+                <option value="en-GB-RyanNeural">UK Ryan (Male)</option>
+              </optgroup>
+              <optgroup label="Japanese">
+                <option value="ja-JP-NanamiNeural">JP Nanami (Female)</option>
+                <option value="ja-JP-KeitaNeural">JP Keita (Male)</option>
+              </optgroup>
+            </select>
+            <Button
+              onClick={toggleTTSEnabled}
+              variant={ttsEnabled ? 'default' : 'outline'}
+              size="sm"
+              className="flex items-center gap-1"
+            >
+              {ttsEnabled ? (
+                <Volume2 className="h-3 w-3" />
+              ) : (
+                <VolumeX className="h-3 w-3" />
+              )}
+              <span className="text-xs">{ttsEnabled ? 'TTS On' : 'TTS Off'}</span>
+            </Button>
             {ytSession && (
               <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-1.5">
                 <Video className="h-4 w-4 text-red-500" />
@@ -473,9 +548,26 @@ export default function ChatPage() {
                     </div>
                   )}
                   <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                  <p className={`text-xs mt-1 ${msg.role === 'user' && !msg.isYouTube ? 'text-white/70' : 'text-text-muted'}`}>
-                    {getTimeString(msg.timestamp)}
-                  </p>
+                  <div className="flex items-center justify-between mt-1">
+                    <p className={`text-xs ${msg.role === 'user' && !msg.isYouTube ? 'text-white/70' : 'text-text-muted'}`}>
+                      {getTimeString(msg.timestamp)}
+                    </p>
+                    {/* TTS button for assistant messages */}
+                    {msg.role === 'assistant' && (
+                      <button
+                        onClick={() => playTTS(msg.content, msg.id)}
+                        disabled={ttsLoading === msg.id}
+                        className="text-text-muted hover:text-primary transition-colors p-1 rounded hover:bg-surface-light"
+                        title="Play TTS"
+                      >
+                        {ttsLoading === msg.id ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Volume2 className="h-3 w-3" />
+                        )}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             ))

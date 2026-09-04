@@ -147,4 +147,45 @@ export const youtubeChatApi = {
   },
 };
 
+// TTS API
+export const ttsApi = {
+  generate: async (text: string, voice?: string, rate?: string): Promise<Blob> => {
+    const { data } = await api.post('/tts/generate/', {
+      text,
+      voice,
+      rate,
+    }, {
+      responseType: 'blob',
+    });
+    return data;
+  },
+
+  getVoices: async (language?: string): Promise<{
+    voices: Record<string, Array<{ id: string; name: string; gender: string }>>;
+    default_voice: string;
+  }> => {
+    const { data } = await api.get('/tts/voices/', {
+      params: language ? { language } : {},
+    });
+    return data;
+  },
+
+  chatMessage: async (
+    text: string,
+    characterId?: string,
+    voice?: string,
+    rate?: string
+  ): Promise<Blob> => {
+    const { data } = await api.post('/tts/chat-message/', {
+      text,
+      character_id: characterId,
+      voice,
+      rate,
+    }, {
+      responseType: 'blob',
+    });
+    return data;
+  },
+};
+
 export default api;

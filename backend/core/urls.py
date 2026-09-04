@@ -7,6 +7,7 @@ from rest_framework.routers import DefaultRouter
 
 from . import views
 from . import youtube_views
+from . import tts_views
 
 router = DefaultRouter()
 router.register(r'characters', views.CharacterViewSet)
@@ -25,4 +26,8 @@ urlpatterns = [
     path('yt-chat/start/', youtube_views.start_youtube_chat, name='yt-chat-start'),
     path('yt-chat/stop/', youtube_views.stop_youtube_chat, name='yt-chat-stop'),
     path('yt-chat/status/', youtube_views.youtube_chat_status, name='yt-chat-status'),
+    # TTS endpoints
+    path('tts/generate/', tts_views.tts_generate, name='tts-generate'),
+    path('tts/voices/', tts_views.tts_voices, name='tts-voices'),
+    path('tts/chat-message/', tts_views.tts_chat_message, name='tts-chat-message'),
 ]
