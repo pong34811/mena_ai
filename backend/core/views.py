@@ -16,9 +16,7 @@ from .serializers import (
     CharacterSerializer,
     ChatMessageSerializer,
     ChatRequestSerializer,
-    ChatResponseSerializer,
     LLMProviderSerializer,
-    TTSSettingsSerializer,
 )
 from .services import LLMService, LLMServiceError
 
@@ -80,12 +78,10 @@ class ChatMessageViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 # ── Chat endpoint ──────────────────────────────────────────────────────
-from django.views.decorators.csrf import csrf_exempt
 from django.utils import timezone
 from datetime import timedelta
 
 
-@csrf_exempt
 @api_view(['POST'])
 def chat(request: Request) -> Response:
     serializer = ChatRequestSerializer(data=request.data)
@@ -118,27 +114,7 @@ def chat(request: Request) -> Response:
     )
 
     # Build system prompt
-    language = character.response_language or 'thai'
-    system_prompt = character.system_prompt
-    if character.system_prompt_ai:
-        system_prompt += f"\n\n{character.system_prompt_ai}"
-    
-    # Replace name templates with actual names
-    name_th = character.name_th or character.name
-    name_en = character.name_en or character.name
-    system_prompt = system_prompt.replace('{name_th}', name_th).replace('{name_en}', name_en)
-    
-    # Apply response_length instruction
-    length_map = {
-        'short': 'ตอบสั้นๆ ไม่เกิน 1-2 ประโยค หรือ 60 ตัวอักษร เหมือนสตรีมเมอร์ทั่วไป',
-        'normal': 'ตอบปกติ ไม่เกิน 2-4 ประโยค หรือ 150 ตัวอักษร',
-        'long': 'ตอบยาวเต็มที่ ให้รายละเอียด',
-        'custom': f'ตอบตามความยาวที่กำหนด (max_tokens={character.custom_max_tokens or 1024})',
-    }
-    length_text = length_map.get(character.response_length, length_map['short'])
-    system_prompt = system_prompt.replace('{response_length_instruction}', length_text)
-    
-    system_prompt += f"\n\n**สำคัญมาก: คุณต้องตอบกลับเป็นภาษา{language}เท่านั้น อย่าตอบเป็นภาษาอื่น**"
+    system_prompt = character.build_system_prompt()
 
     messages = [{'role': 'system', 'content': system_prompt}]
     messages += [{'role': h['role'], 'content': h['content']} for h in reversed(history)]
@@ -147,10 +123,8 @@ def chat(request: Request) -> Response:
     # Call LLM
     llm = LLMService()
     try:
-        # Override max_tokens based on response_length (always use auto model)
-        length_tokens = {'short': 128, 'normal': 256, 'long': 512, 'custom': character.custom_max_tokens or 512}
-        max_tokens = length_tokens.get(character.response_length, 256)
-        response_text = llm.chat(messages, max_tokens=max_tokens)
+        max_tokens = character.get_max_tokens()
+        response_text = llm.chat_for_character(character, messages, max_tokens=max_tokens)
     except LLMServiceError as e:
         return Response({'error': str(e)}, status=status.HTTP_502_BAD_GATEWAY)
 
@@ -198,7 +172,6 @@ def llm_status(request: Request) -> Response:
 
 
 # ── Generate AI prompt ─────────────────────────────────────────────────
-@csrf_exempt
 @api_view(['POST'])
 def generate_character_prompt(request: Request, character_id: str) -> Response:
     # Rate limit

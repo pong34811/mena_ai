@@ -314,6 +314,54 @@ class LLMService:
 
         return response_text
 
+    def repair_language(self, character, messages: list[dict], text: str) -> str:
+        """Ask the model once more for the same reply in the right language.
+
+        Used when a reply comes back in a language other than the character's
+        configured response_language (e.g. Japanese input echoed back in
+        Japanese despite response_language='thai').
+        """
+        language_name = character.get_language_name()
+        repair_messages = list(messages) + [
+            {"role": "assistant", "content": text},
+            {
+                "role": "user",
+                "content": (
+                    f"ตอบอีกครั้งเป็นภาษา{language_name}เท่านั้น สั้นๆ "
+                    f"ห้ามใช้ภาษาอื่น"
+                ),
+            },
+        ]
+        return self.chat(
+            repair_messages, max_tokens=character.get_max_tokens()
+        )
+
+    def chat_for_character(
+        self,
+        character,
+        messages: list[dict],
+        max_tokens: Optional[int] = None,
+    ) -> str:
+        """Chat with hard enforcement of the character's language + length.
+
+        1. Normal completion.
+        2. If the reply is not in response_language, one repair attempt.
+        3. Deterministic truncation to the response_length budget
+           (short stays 1-2 sentences even if the model wrote more).
+        """
+        tokens = max_tokens if max_tokens is not None else character.get_max_tokens()
+        text = self.chat(messages, max_tokens=tokens)
+        if text and not character.matches_language(text):
+            logger.warning(
+                "Reply not in '%s', requesting repair: %r",
+                character.response_language, text[:80],
+            )
+            try:
+                text = self.repair_language(character, messages, text)
+            except LLMServiceError as e:
+                logger.warning(f"Language repair failed, keeping original: {e}")
+        return character.enforce_response_length(text)
+
     def _make_request(
         self,
         messages: list[dict],

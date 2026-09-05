@@ -59,31 +59,10 @@ class YouTubeChatSessionManager:
         self._video_id = video_id
 
         # Pre-build system prompt (avoid rebuilding per message)
-        language = character.response_language or "thai"
-        self._base_system_prompt = character.system_prompt
-        if character.system_prompt_ai:
-            self._base_system_prompt += "\n\n" + character.system_prompt_ai
-        
-        # Replace name templates with actual names
-        name_th = character.name_th or character.name
-        name_en = character.name_en or character.name
-        self._base_system_prompt = self._base_system_prompt.replace('{name_th}', name_th).replace('{name_en}', name_en)
-        
-        # Apply response_length instruction
-        length_map = {
-            'short': 'ตอบสั้นๆ ไม่เกิน 1-2 ประโยค หรือ 60 ตัวอักษร เหมือนสตรีมเมอร์ทั่วไป',
-            'normal': 'ตอบปกติ ไม่เกิน 2-4 ประโยค หรือ 150 ตัวอักษร',
-            'long': 'ตอบยาวเต็มที่ ให้รายละเอียด',
-            'custom': f'ตอบตามความยาวที่กำหนด (max_tokens={character.custom_max_tokens or 1024})',
-        }
-        length_text = length_map.get(character.response_length, length_map['short'])
-        self._base_system_prompt = self._base_system_prompt.replace('{response_length_instruction}', length_text)
-        
-        self._base_system_prompt += f"\n\n**สำคัญมาก: คุณต้องตอบกลับเป็นภาษา{language}เท่านั้น**"
+        self._base_system_prompt = character.build_system_prompt()
         
         # Store response_length for max_tokens override
-        self._response_length = character.response_length
-        self._custom_max_tokens = character.custom_max_tokens
+        self._max_tokens = character.get_max_tokens()
 
         # Cache for per-author history (avoid repeated DB queries)
         self._author_history_cache = defaultdict(list)
@@ -131,10 +110,9 @@ class YouTubeChatSessionManager:
 
                     messages.append({"role": "user", "content": f"[{msg.author_name}]: {msg.text}"})
 
-                    # Override max_tokens based on response_length
-                    length_tokens = {'short': 128, 'normal': 256, 'long': 512, 'custom': self._custom_max_tokens or 512}
-                    max_tokens = length_tokens.get(self._response_length, 256)
-                    response = self._llm.chat(messages, max_tokens=max_tokens)
+                    response = self._llm.chat_for_character(
+                        self._character, messages, max_tokens=self._max_tokens
+                    )
                     yt_msg.ai_response = response[:4000]
                     yt_msg.ai_responded = True
                     yt_msg.save(update_fields=["ai_response", "ai_responded"])

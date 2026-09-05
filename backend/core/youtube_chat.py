@@ -137,7 +137,7 @@ class YouTubeLiveChatService:
                             timestamp=time.time(),
                             is_mod=item.author.type == "moderator",
                             is_owner=item.author.type == "owner",
-                            is_super_chat=item.amountString is not None,
+                            is_super_chat=bool(item.amountString),
                         )
                         # Deduplicate
                         if msg.message_id not in self._seen_ids:

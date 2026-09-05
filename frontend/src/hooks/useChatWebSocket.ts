@@ -1,0 +1,51 @@
+import { useRef, useCallback, useEffect } from 'react'
+
+interface UseChatWebSocketOptions {
+  onToken?: (token: string) => void
+  onDone?: (messageId: string, content?: string) => void
+  onError?: (error: string) => void
+}
+
+export function useChatWebSocket({ onToken, onDone, onError }: UseChatWebSocketOptions = {}) {
+  const wsRef = useRef<WebSocket | null>(null)
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const connect = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) return
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const ws = new WebSocket(`${protocol}//${window.location.host}/ws/chat/`)
+    wsRef.current = ws
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data)
+        if (msg.type === 'token') onToken?.(msg.content)
+        else if (msg.type === 'done') onDone?.(msg.message_id, msg.content)
+        else if (msg.type === 'error') onError?.(msg.error)
+      } catch {}
+    }
+
+    ws.onclose = () => {
+      reconnectTimeoutRef.current = setTimeout(connect, 3000)
+    }
+
+    ws.onerror = () => ws.close()
+  }, [onToken, onDone, onError])
+
+  useEffect(() => {
+    connect()
+    return () => {
+      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current)
+      wsRef.current?.close()
+    }
+  }, [connect])
+
+  const sendChat = useCallback((characterId: string, message: string, userName: string) => {
+    if (wsRef.current?.readyState !== WebSocket.OPEN) return false
+    wsRef.current.send(JSON.stringify({ type: 'chat', character_id: characterId, message, user_name: userName }))
+    return true
+  }, [])
+
+  return { sendChat }
+}
