@@ -5,7 +5,7 @@ import type { LLMProvider } from '@/types'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { Plus, Zap, Check, X, MessageSquare, Sparkles, Settings } from 'lucide-react'
+import { Plus, Zap, Check, X, MessageSquare, Sparkles, Settings, Volume2 } from 'lucide-react'
 
 export default function SettingsPage() {
   const [providers, setProviders] = useState<LLMProvider[]>([])
@@ -126,6 +126,9 @@ export default function SettingsPage() {
           </Link>
           <Link to="/settings" className="flex items-center gap-1 px-3 py-1 text-sm text-primary bg-primary/10 rounded">
             <Settings className="h-3 w-3" />Provider Settings
+          </Link>
+          <Link to="/tts-settings" className="flex items-center gap-1 px-3 py-1 text-sm text-text-muted hover:text-text rounded hover:bg-surface-light">
+            <Volume2 className="h-3 w-3" />TTS Settings
           </Link>
         </nav>
       </header>

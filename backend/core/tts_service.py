@@ -11,6 +11,7 @@ import os
 import asyncio
 import hashlib
 import logging
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -50,9 +51,30 @@ CACHE_DIR.mkdir(exist_ok=True)
 MAX_CACHE_SIZE = 100
 
 
-def get_cache_path(text: str, voice: str) -> Path:
-    """Generate a cache file path for given text and voice."""
-    text_hash = hashlib.md5(f"{voice}:{text}".encode('utf-8')).hexdigest()
+def normalize_rate(rate: str) -> str:
+    """Normalize a speech rate into edge-tts format (e.g. '+10%', '-5%').
+
+    Accepts edge-tts format directly, or a speed multiplier like '1.0'/'1.1'
+    (sent by older frontend defaults) which is converted to a percentage.
+    Falls back to '+0%' for anything unparseable.
+    """
+    if not rate:
+        return '+0%'
+    rate = str(rate).strip()
+    if re.fullmatch(r'[+-]?\d+%', rate):
+        return rate if rate.startswith(('+', '-')) else f'+{rate}'
+    try:
+        mult = float(rate)
+        pct = round((mult - 1) * 100)
+        return f'+{pct}%' if pct >= 0 else f'{pct}%'
+    except (ValueError, TypeError):
+        logger.warning(f"Unparseable TTS rate {rate!r}, falling back to '+0%'")
+        return '+0%'
+
+
+def get_cache_path(text: str, voice: str, rate: str = '+0%') -> Path:
+    """Generate a cache file path for given text, voice and rate."""
+    text_hash = hashlib.md5(f"{voice}:{rate}:{text}".encode('utf-8')).hexdigest()
     return CACHE_DIR / f"{text_hash}.mp3"
 
 
@@ -73,13 +95,14 @@ class TTSService:
     def __init__(self, voice: str = DEFAULT_VOICE, rate: str = "+0%"):
         """
         Initialize TTS service.
-        
+
         Args:
             voice: Voice ID (e.g., 'th-TH-PremwadeeNeural')
-            rate: Speech rate adjustment (e.g., '+10%', '-10%')
+            rate: Speech rate adjustment (e.g., '+10%', '-10%').
+                Speed multipliers like '1.0' are normalized automatically.
         """
         self.voice = voice
-        self.rate = rate
+        self.rate = normalize_rate(rate)
     
     async def _generate_async(self, text: str, output_path: Path) -> bool:
         """Generate audio file asynchronously."""
@@ -110,7 +133,7 @@ class TTSService:
         if len(text) > 300:
             text = text[:300]
         
-        cache_path = get_cache_path(text, self.voice)
+        cache_path = get_cache_path(text, self.voice, self.rate)
         
         # Return cached file if exists
         if use_cache and cache_path.exists():

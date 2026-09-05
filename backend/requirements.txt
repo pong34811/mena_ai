@@ -3,3 +3,5 @@ djangorestframework>=3.16
 django-cors-headers>=4.5
 python-dotenv>=1.0
 requests>=2.32
+channels[daphne]>=4.0
+channels-redis>=4.0

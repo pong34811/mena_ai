@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
-import { Volume2, User, Bot, Loader2, X } from 'lucide-react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Volume2, User, Bot, Loader2, MessageSquare, Sparkles, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { ttsApi } from '@/services/api'
 
@@ -141,25 +141,22 @@ export default function TTSSettingsPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="h-14 border-b border-border bg-surface px-6 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => navigate(-1)}
-            className="flex items-center gap-1 text-sm text-text-muted hover:text-text transition-colors"
-          >
-            <X className="h-4 w-4" />
-            Back
-          </button>
-          <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-lg bg-primary/20 flex items-center justify-center">
-              <Volume2 className="h-4 w-4 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-base font-semibold text-text">TTS Settings</h1>
-              <p className="text-xs text-text-muted">ตั้งค่าเสียงสำหรับผู้ถามและผู้ตอบ</p>
-            </div>
-          </div>
-        </div>
+      <header className="h-12 border-b border-border bg-surface px-4 flex items-center gap-4">
+        <span className="font-semibold text-sm text-text">MENA AI VTuber</span>
+        <nav className="flex items-center gap-1 ml-4">
+          <Link to="/chat" className="flex items-center gap-1 px-3 py-1 text-sm text-text-muted hover:text-text rounded hover:bg-surface-light">
+            <MessageSquare className="h-3 w-3" />Chat
+          </Link>
+          <Link to="/characters" className="flex items-center gap-1 px-3 py-1 text-sm text-text-muted hover:text-text rounded hover:bg-surface-light">
+            <Sparkles className="h-3 w-3" />Characters
+          </Link>
+          <Link to="/settings" className="flex items-center gap-1 px-3 py-1 text-sm text-text-muted hover:text-text rounded hover:bg-surface-light">
+            <Settings className="h-3 w-3" />Provider Settings
+          </Link>
+          <Link to="/tts-settings" className="flex items-center gap-1 px-3 py-1 text-sm text-primary bg-primary/10 rounded">
+            <Volume2 className="h-3 w-3" />TTS Settings
+          </Link>
+        </nav>
       </header>
 
       <div className="max-w-2xl mx-auto p-6">

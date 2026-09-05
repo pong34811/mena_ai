@@ -1,7 +1,7 @@
 // API service for communicating with Django backend
 
 import axios from 'axios';
-import type { Character, ChatMessage, ChatRequest, ChatResponse, HealthResponse, LLMProvider, LLMStatus } from '../types';
+import type { Character, ChatRequest, ChatResponse, HealthResponse, LLMProvider } from '../types';
 
 const api = axios.create({
   baseURL: '/api',
@@ -47,11 +47,6 @@ export const chatApi = {
     const { data } = await api.post('/chat/', request);
     return data;
   },
-
-  getMessages: async (): Promise<ChatMessage[]> => {
-    const { data } = await api.get('/messages/');
-    return data.results || data;
-  },
 };
 
 export const healthApi = {
@@ -62,11 +57,6 @@ export const healthApi = {
 };
 
 export const llmStatusApi = {
-  getStatus: async (): Promise<LLMStatus> => {
-    const { data } = await api.get('/llm-status/');
-    return data;
-  },
-
   getProviders: async (): Promise<LLMProvider[]> => {
     const { data } = await api.get('/llm-providers/');
     return data.results || data;
@@ -80,10 +70,6 @@ export const llmStatusApi = {
   updateProvider: async (id: string, provider: Partial<LLMProvider>): Promise<LLMProvider> => {
     const { data } = await api.patch(`/llm-providers/${id}/`, provider);
     return data;
-  },
-
-  deleteProvider: async (id: string): Promise<void> => {
-    await api.delete(`/llm-providers/${id}/`);
   },
 };
 

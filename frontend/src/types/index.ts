@@ -9,7 +9,8 @@ export interface Character {
   system_prompt: string;
   system_prompt_ai: string;
   avatar_url: string;
-  response_language: string;
+    avatar_border_color: string;
+    response_language: string;
   response_length?: 'short' | 'normal' | 'long' | 'custom';
   enable_per_user_memory: boolean;
   memory_duration_days: number;
