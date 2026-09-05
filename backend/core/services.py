@@ -48,6 +48,11 @@ MODELS_CACHE_TTL = 3600.0
 CONNECT_TIMEOUT = 10
 READ_TIMEOUT = 60
 
+# A reply is "bad" when the API cut it off at its token budget
+# (finish_reason == "length") or returned nothing at all. Retry such replies
+# with a larger budget so they can finish before we surface them.
+TRUNCATION_RETRY_MAX_TOKENS = 16384
+
 
 class RateLimiter:
     """Simple sliding window rate limiter."""
@@ -382,10 +387,38 @@ class LLMService:
                 raise LLMServiceError("No choices in LLM response")
 
             message = choices[0].get('message', {})
-            content = message.get('content', '')
+            content = (message.get('content') or '').strip()
+            finish_reason = choices[0].get('finish_reason')
 
-            if not content:
+            empty = not content
+            truncated = finish_reason == 'length'
+
+            # Auto-retry empty or truncated replies before surfacing them: an
+            # empty body or a length-truncated body (hit its token budget
+            # mid-sentence) is a failed reply, not a real answer. Give it
+            # another shot with a larger token budget so it can actually finish.
+            if (truncated or empty) and retry_count < max_retries:
+                reason = "empty content" if empty else f"truncated content ({len(content)} chars)"
+                logger.warning(
+                    f"Model {model} returned {reason} (finish_reason={finish_reason!r}); "
+                    f"retrying (attempt {retry_count + 1}/{max_retries})"
+                )
+                time.sleep(min(2 ** retry_count * 0.5, 5.0))
+                if self._rate_limiter.acquire(timeout=30):
+                    retry_tokens = min(max_tokens * 2, TRUNCATION_RETRY_MAX_TOKENS)
+                    return self._make_request(
+                        messages, model, temperature, retry_tokens,
+                        retry_count + 1, max_retries
+                    )
+
+            if empty:
                 raise LLMServiceError("Empty content in LLM response")
+
+            if truncated:
+                logger.warning(
+                    f"Model {model} reply still truncated after retries "
+                    f"({len(content)} chars); returning partial content"
+                )
 
             # Cache as working model
             with _state_lock:
@@ -460,12 +493,17 @@ class LLMService:
 
                 choices = data.get('choices', [])
                 if choices:
-                    content = choices[0].get('message', {}).get('content', '')
-                    if content:
+                    content = (choices[0].get('message', {}).get('content') or '').strip()
+                    finish_reason = choices[0].get('finish_reason')
+                    if content and finish_reason != 'length':
                         with _state_lock:
                             _working_model = model
                         logger.info(f"Fallback model {model} succeeded")
                         return content
+                    logger.warning(
+                        f"Fallback model {model} returned empty/truncated content "
+                        f"(finish_reason={finish_reason!r}); trying next model"
+                    )
 
             except Exception as e:
                 logger.warning(f"Fallback model {model} failed: {e}")
