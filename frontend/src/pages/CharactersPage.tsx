@@ -5,7 +5,7 @@ import type { Character } from '@/types'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { Plus, Pencil, Trash2, X, Sparkles, MessageSquare, Settings } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, Sparkles, MessageSquare, Settings, Volume2 } from 'lucide-react'
 
 const LANGUAGES = [
   { value: 'thai', label: '🇹🇭 ไทย (Thai)' },
@@ -59,6 +59,8 @@ export default function CharactersPage() {
   const [aiPromptCharacter, setAiPromptCharacter] = useState<Character | null>(null)
   const [aiPromptText, setAiPromptText] = useState('')
   const [aiPromptStats, setAiPromptStats] = useState<{ messages_analyzed: number; total_messages: number } | null>(null)
+  const [generatingAi, setGeneratingAi] = useState(false)
+  const [aiGenStats, setAiGenStats] = useState<string | null>(null)
 
   useEffect(() => {
     loadCharacters()
@@ -100,6 +102,7 @@ export default function CharactersPage() {
       })
       setIsEdit(true)
       setShowForm(true)
+      setAiGenStats(null)
     } catch {
       console.error('Failed to load character')
     }
@@ -161,9 +164,29 @@ export default function CharactersPage() {
     try {
       await characterApi.update(aiPromptCharacter.id, { system_prompt_ai: aiPromptText })
       setShowAiModal(false)
+      // sync back into edit form when editing the same character
+      if (editId && aiPromptCharacter.id === editId) {
+        setFormData((prev) => ({ ...prev, system_prompt_ai: aiPromptText }))
+      }
       loadCharacters()
     } catch {
       console.error('Failed to save AI prompt')
+    }
+  }
+
+  const handleGenerateAiInForm = async () => {
+    if (!editId || generatingAi) return
+    try {
+      setGeneratingAi(true)
+      setAiGenStats(null)
+      const result = await characterApi.generatePrompt(editId)
+      setFormData((prev) => ({ ...prev, system_prompt_ai: result.system_prompt_ai }))
+      setAiGenStats(`AI วิเคราะห์ ${result.messages_analyzed}/${result.total_messages} ข้อความ`)
+    } catch (err: any) {
+      console.error('Failed to generate prompt:', err.response?.data?.error)
+      setAiGenStats(err.response?.data?.error || 'สร้างไม่สำเร็จ — ลองใหม่อีกครั้ง')
+    } finally {
+      setGeneratingAi(false)
     }
   }
 
@@ -181,6 +204,9 @@ export default function CharactersPage() {
           </Link>
           <Link to="/settings" className="flex items-center gap-1 px-3 py-1 text-sm text-text-muted hover:text-text rounded hover:bg-surface-light">
             <Settings className="h-3 w-3" />Provider Settings
+          </Link>
+          <Link to="/tts-settings" className="flex items-center gap-1 px-3 py-1 text-sm text-text-muted hover:text-text rounded hover:bg-surface-light">
+            <Volume2 className="h-3 w-3" />TTS Settings
           </Link>
         </nav>
       </header>
@@ -241,6 +267,33 @@ export default function CharactersPage() {
                       rows={4}
                       className="w-full rounded-lg border border-border bg-surface-light px-3 py-2 text-sm placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                     />
+                  </div>
+                  {/* AI-Generated Prompt Section */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-medium">System Prompt AI</label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleGenerateAiInForm}
+                        disabled={!editId || generatingAi}
+                        title={!editId ? 'บันทึกตัวละครก่อนจึงจะ generate ได้' : 'Generate จาก chat history'}
+                      >
+                        <Sparkles className="h-3 w-3 mr-1" />
+                        {generatingAi ? 'Generating...' : 'Gen จาก chat'}
+                      </Button>
+                    </div>
+                    <textarea
+                      value={formData.system_prompt_ai}
+                      onChange={(e) => setFormData({ ...formData, system_prompt_ai: e.target.value })}
+                      placeholder="AI-generated prompt based on chat history (กด Gen จาก chat เพื่อสร้าง)..."
+                      rows={6}
+                      className="w-full rounded-lg border border-border bg-surface-light px-3 py-2 text-sm placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary font-mono text-xs"
+                    />
+                    <p className="text-xs text-text-muted">
+                      {aiGenStats || 'AI สร้างจาก chat history — รวมกับ System Prompt ตอนคุย'}
+                    </p>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
