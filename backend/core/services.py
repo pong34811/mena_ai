@@ -145,7 +145,7 @@ def _load_provider_config() -> dict:
         "max_tokens": 2048,
     }
     try:
-        from .models import LLMProvider
+        from providers.models import LLMProvider
 
         provider = LLMProvider.objects.filter(is_active=True).order_by("-updated_at").first()
         if provider:

@@ -9,13 +9,19 @@ interface UseChatWebSocketOptions {
 export function useChatWebSocket({ onToken, onDone, onError }: UseChatWebSocketOptions = {}) {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const isUnmountedRef = useRef(false)
 
   const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return
+    const existing = wsRef.current
+    if (existing && existing.readyState !== WebSocket.CLOSED) return
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const ws = new WebSocket(`${protocol}//${window.location.host}/ws/chat/`)
     wsRef.current = ws
+
+    ws.onopen = () => {
+      if (isUnmountedRef.current) ws.close()
+    }
 
     ws.onmessage = (event) => {
       try {
@@ -27,17 +33,24 @@ export function useChatWebSocket({ onToken, onDone, onError }: UseChatWebSocketO
     }
 
     ws.onclose = () => {
-      reconnectTimeoutRef.current = setTimeout(connect, 3000)
+      if (!isUnmountedRef.current) {
+        reconnectTimeoutRef.current = setTimeout(connect, 3000)
+      }
     }
 
-    ws.onerror = () => ws.close()
+    ws.onerror = () => {
+      if (ws.readyState === WebSocket.OPEN) ws.close()
+    }
   }, [onToken, onDone, onError])
 
   useEffect(() => {
+    isUnmountedRef.current = false
     connect()
     return () => {
+      isUnmountedRef.current = true
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current)
-      wsRef.current?.close()
+      const ws = wsRef.current
+      if (ws && ws.readyState === WebSocket.OPEN) ws.close()
     }
   }, [connect])
 

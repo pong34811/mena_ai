@@ -65,13 +65,18 @@ export default function ChatPage() {
         if (!prev) return null
         // Commit streaming message to messages list — prefer the server's
         // enforced final text (language/length checked) when provided.
-        const assistantMessage: DisplayMessage = {
-          id: messageId || prev.id,
-          role: 'assistant',
-          content: content || prev.content,
-          timestamp: new Date(),
-        }
-        setMessages(m => [...m, assistantMessage])
+        const id = messageId || prev.id
+        const contentText = content || prev.content
+        setMessages(m => {
+          // Guard against duplicate done events (e.g. WebSocket reconnection)
+          if (m.some(msg => msg.id === id)) return m
+          return [...m, {
+            id,
+            role: 'assistant' as const,
+            content: contentText,
+            timestamp: new Date(),
+          }]
+        })
         // Speak the exchange
         return null
       })
@@ -198,6 +203,7 @@ export default function ChatPage() {
         for (const msg of newMessages) {
           if (!existingIds.has(msg.id)) {
             merged.push(msg)
+            existingIds.add(msg.id)
           }
         }
         merged.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
@@ -525,6 +531,10 @@ export default function ChatPage() {
             <Link to="/tts-settings" className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg text-text-muted hover:bg-surface-light hover:text-text">
               <Settings className="h-4 w-4" />
               <span>TTS Settings</span>
+            </Link>
+            <Link to="/vtube-studio" className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg text-text-muted hover:bg-surface-light hover:text-text">
+              <Video className="h-4 w-4" />
+              <span>VTube Studio</span>
             </Link>
           </nav>
           <div className="flex items-center gap-2">

@@ -5,7 +5,7 @@ import type { LLMProvider } from '@/types'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { Plus, Zap, Check, X, MessageSquare, Sparkles, Settings, Volume2 } from 'lucide-react'
+import { Plus, Zap, Check, X, MessageSquare, Sparkles, Settings, Volume2, Video } from 'lucide-react'
 
 export default function SettingsPage() {
   const [providers, setProviders] = useState<LLMProvider[]>([])
@@ -83,7 +83,7 @@ export default function SettingsPage() {
       setSaving(true)
       await llmStatusApi.createProvider({
         name: 'New Provider',
-        api_url: 'http://127.0.0.1:31415/v1/chat/completions',
+        api_url: 'http://192.168.1.10:31415/v1/chat/completions',
         api_key: '',
         model_name: 'auto',
         temperature: 0.7,
@@ -129,6 +129,9 @@ export default function SettingsPage() {
           </Link>
           <Link to="/tts-settings" className="flex items-center gap-1 px-3 py-1 text-sm text-text-muted hover:text-text rounded hover:bg-surface-light">
             <Volume2 className="h-3 w-3" />TTS Settings
+          </Link>
+          <Link to="/vtube-studio" className="flex items-center gap-1 px-3 py-1 text-sm text-text-muted hover:text-text rounded hover:bg-surface-light">
+            <Video className="h-3 w-3" />VTube Studio
           </Link>
         </nav>
       </header>
@@ -223,7 +226,7 @@ export default function SettingsPage() {
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium">API URL</label>
-                    <Input value={formData.api_url} onChange={(e) => setFormData({ ...formData, api_url: e.target.value })} placeholder="http://127.0.0.1:31415/v1/chat/completions" />
+                    <Input value={formData.api_url} onChange={(e) => setFormData({ ...formData, api_url: e.target.value })} placeholder="http://192.168.1.10:31415/v1/chat/completions" />
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium">API Key</label>

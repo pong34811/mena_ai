@@ -4,19 +4,16 @@ API views for AI VTuber system — Optimized for performance.
 
 import logging
 import time
-from functools import lru_cache
 
 from rest_framework import viewsets, status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework.request import Request
 
-from .models import Character, ChatMessage, LLMProvider, TTSSettings
+from .models import Character
 from .serializers import (
     CharacterSerializer,
-    ChatMessageSerializer,
     ChatRequestSerializer,
-    LLMProviderSerializer,
 )
 from .services import LLMService, LLMServiceError
 
@@ -67,19 +64,10 @@ class CharacterViewSet(viewsets.ModelViewSet):
         instance.delete()
 
 
-class LLMProviderViewSet(viewsets.ModelViewSet):
-    queryset = LLMProvider.objects.all()
-    serializer_class = LLMProviderSerializer
-
-
-class ChatMessageViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = ChatMessage.objects.all()
-    serializer_class = ChatMessageSerializer
-
-
 # ── Chat endpoint ──────────────────────────────────────────────────────
 from django.utils import timezone
 from datetime import timedelta
+from chat_messages.models import ChatMessage
 
 
 @api_view(['POST'])

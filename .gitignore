@@ -57,3 +57,19 @@ var/
 sdist/
 develop-eggs/
 .installed.cfg
+
+# Secrets
+db_password.txt
+
+# Scratch / tooling
+$HOME/
+.freebuff/
+agent-office/
+skill-evals/
+tmp/
+cdp-debug.js
+debug-repro.js
+
+# Partial downloads
+*.part
+*-Frag1

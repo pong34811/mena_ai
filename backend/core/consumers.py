@@ -78,7 +78,8 @@ class ChatStreamConsumer(AsyncWebsocketConsumer):
         from core.services import LLMService, LLMServiceError
 
         try:
-            from core.models import Character, ChatMessage
+            from core.models import Character
+            from chat_messages.models import ChatMessage
             from django.utils import timezone
             from datetime import timedelta
 
@@ -155,10 +156,10 @@ class ChatStreamConsumer(AsyncWebsocketConsumer):
                                     choices = chunk.get('choices', [])
                                     if choices:
                                         delta = choices[0].get('delta', {})
-                                        # Skip reasoning_content (thinking tokens), only send actual content
-                                        content = delta.get('content', '')
-                                        if content:
-                                            token_queue.put(content)
+                                        # Put content into queue (including empty strings)
+                                        # to keep the queue flowing — we filter client-side
+                                        content = delta.get('content', '') or ''
+                                        token_queue.put(content)
                                 except json.JSONDecodeError:
                                     continue
                 except Exception as e:
@@ -178,10 +179,10 @@ class ChatStreamConsumer(AsyncWebsocketConsumer):
             try:
                 while True:
                     try:
-                        # Use asyncio.wait_for with sync_to_async to poll the queue
+                        # Block until a token lands; the 300s wait_for is the stall guard.
                         token = await asyncio.wait_for(
-                            sync_to_async(token_queue.get, thread_sensitive=False)(True, 1),
-                            timeout=120
+                            sync_to_async(token_queue.get, thread_sensitive=False)(),
+                            timeout=300
                         )
                         if token is SENTINEL:
                             break
@@ -199,7 +200,7 @@ class ChatStreamConsumer(AsyncWebsocketConsumer):
                         logger.warning("Token queue timeout - stream may be stuck")
                         break
             except Exception:
-                pass  # Error handling below
+                raise
 
             # Server-side enforcement: length truncation + language repair, so
             # the saved reply always honors response_language/response_length

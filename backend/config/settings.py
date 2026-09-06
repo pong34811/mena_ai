@@ -30,6 +30,9 @@ INSTALLED_APPS = [
     'channels',
     # Local apps
     'core',
+    'providers',
+    'chat_messages',
+    'messages_tts',
     'vtube_studio',
 ]
 
@@ -74,11 +77,13 @@ CHANNEL_LAYERS = {
     },
 }
 
+import dj_database_url
+
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    'default': dj_database_url.config(
+        default='sqlite:///' + str(BASE_DIR / 'db.sqlite3'),
+        conn_max_age=600,
+    )
 }
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -113,6 +118,7 @@ REST_FRAMEWORK = {
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',
     'http://127.0.0.1:5173',
+    'http://192.168.1.10:5173',
 ]
 
 # Free LLM API Settings

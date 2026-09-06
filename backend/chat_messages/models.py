@@ -1,11 +1,44 @@
 """
-Models for YouTube Live Chat integration.
+Messages models for AI VTuber system.
 """
 
 import uuid
 from django.db import models
 
-from .models import Character
+from core.models import Character
+
+
+class ChatMessage(models.Model):
+    """Chat message history."""
+
+    class Role(models.TextChoices):
+        USER = 'user', 'User'
+        ASSISTANT = 'assistant', 'Assistant'
+        SYSTEM = 'system', 'System'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    character = models.ForeignKey(
+        Character, on_delete=models.CASCADE, related_name='messages'
+    )
+    role = models.CharField(max_length=20, choices=Role.choices)
+    content = models.TextField()
+    user_name = models.CharField(
+        max_length=100,
+        blank=True,
+        default='',
+        help_text='Name of the user who sent this message (for per-user memory)'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'core_chatmessage'
+        ordering = ['created_at']
+        indexes = [
+            models.Index(fields=['character', 'user_name', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.character.name} - {self.role}: {self.content[:50]}"
 
 
 class YouTubeLiveChatSession(models.Model):
@@ -31,6 +64,7 @@ class YouTubeLiveChatSession(models.Model):
     stopped_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
+        db_table = 'core_youtubelivechatsession'
         ordering = ["-started_at"]
 
     def __str__(self):
@@ -56,6 +90,7 @@ class YouTubeChatMessage(models.Model):
     received_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        db_table = 'core_youtubechatmessage'
         ordering = ["-received_at"]
 
     def __str__(self):

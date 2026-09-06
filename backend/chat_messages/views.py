@@ -1,5 +1,5 @@
 """
-YouTube Chat API views — Optimized for performance.
+API views for messages.
 """
 
 import logging
@@ -7,22 +7,29 @@ import threading
 from typing import Optional
 from collections import defaultdict
 
+from django.db.models import F
 from rest_framework import viewsets, status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework.request import Request
 
-from .youtube_models import YouTubeLiveChatSession, YouTubeChatMessage
-from .youtube_serializers import (
+from .models import ChatMessage, YouTubeLiveChatSession, YouTubeChatMessage
+from .serializers import (
+    ChatMessageSerializer,
     YouTubeLiveChatSessionSerializer,
     YouTubeChatMessageSerializer,
     YouTubeChatStartSerializer,
 )
-from .youtube_chat import YouTubeLiveChatService, ChatMessage
-from .services import LLMService, LLMServiceError
-from .views import _get_character
+from core.youtube_chat import YouTubeLiveChatService, ChatMessage as YTChatMessage
+from core.services import LLMService, LLMServiceError
+from core.views import _get_character
 
 logger = logging.getLogger(__name__)
+
+
+class ChatMessageViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = ChatMessage.objects.all()
+    serializer_class = ChatMessageSerializer
 
 
 class YouTubeChatSessionManager:
@@ -71,7 +78,7 @@ class YouTubeChatSessionManager:
         self._service = YouTubeLiveChatService(video_id=video_id)
         self._db_session = db_session
 
-        def on_message(msg: ChatMessage):
+        def on_message(msg: YTChatMessage):
             yt_msg = YouTubeChatMessage.objects.create(
                 session=db_session,
                 author_name=msg.author_name,
@@ -81,8 +88,9 @@ class YouTubeChatSessionManager:
                 is_owner=msg.is_owner,
                 is_super_chat=msg.is_super_chat,
             )
-            db_session.messages_received += 1
-            db_session.save(update_fields=["messages_received"])
+            YouTubeLiveChatSession.objects.filter(pk=db_session.pk).update(
+                messages_received=F('messages_received') + 1
+            )
 
             if auto_reply and self._llm and self._character:
                 try:
@@ -116,8 +124,9 @@ class YouTubeChatSessionManager:
                     yt_msg.ai_response = response[:4000]
                     yt_msg.ai_responded = True
                     yt_msg.save(update_fields=["ai_response", "ai_responded"])
-                    db_session.replies_sent += 1
-                    db_session.save(update_fields=["replies_sent"])
+                    YouTubeLiveChatSession.objects.filter(pk=db_session.pk).update(
+                        replies_sent=F('replies_sent') + 1
+                    )
 
                     # Update cache
                     self._author_history_cache[cache_key].append({
@@ -175,7 +184,7 @@ def start_youtube_chat(request: Request) -> Response:
         if not character:
             return Response({"error": "Character not found"}, status=status.HTTP_404_NOT_FOUND)
     else:
-        from .models import Character
+        from core.models import Character
         character = Character.objects.filter(is_active=True).only(
             'id', 'name', 'system_prompt', 'system_prompt_ai',
             'response_language', 'enable_per_user_memory', 'memory_duration_days'

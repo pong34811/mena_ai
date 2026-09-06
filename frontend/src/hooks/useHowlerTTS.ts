@@ -77,6 +77,21 @@ export function useHowlerTTS(initialSettings?: TTSSettings) {
   currentItemRef.current = state.currentItem
   const activeHowlRef = useRef<Howl | null>(null)
 
+  // Resume the shared Howler audio context on the user's first interaction so
+  // autoplay policies don't silently block TTS (chat + YouTube auto-reply).
+  useEffect(() => {
+    const hydrate = () => {
+      const ctx = Howler.ctx as AudioContext | null
+      if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {})
+    }
+    window.addEventListener('pointerdown', hydrate, { once: true })
+    window.addEventListener('keydown', hydrate, { once: true })
+    return () => {
+      window.removeEventListener('pointerdown', hydrate)
+      window.removeEventListener('keydown', hydrate)
+    }
+  }, [])
+
   // Client-side speak queue (FIFO, mirrors the old server-side pair queue)
   const pendingRef = useRef<TTSQueueItem[]>([])
   const drainingRef = useRef(false)
@@ -149,10 +164,20 @@ export function useHowlerTTS(initialSettings?: TTSSettings) {
           console.error('Howler load error')
           resolve()
         })
-        sound.once('playerror', () => {
-          console.error('Howler play error')
-          resolve()
-        })
+
+        const onPlayError = () => {
+          // Browser blocked the first play (no user gesture yet) — unlock the
+          // shared context and retry once before giving up.
+          const ctx = Howler.ctx as AudioContext | null
+          ctx?.resume().then(() => {
+            sound.once('playerror', () => resolve())
+            sound.once('end', () => resolve())
+            sound.stop()
+            sound.play()
+          })
+        }
+
+        sound.once('playerror', onPlayError)
         sound.play()
       })
 

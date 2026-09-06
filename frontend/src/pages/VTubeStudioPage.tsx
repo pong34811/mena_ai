@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Loader2, MessageSquare, Sparkles, Settings, Plug, Wifi, WifiOff, TestTube } from 'lucide-react'
+import { Loader2, MessageSquare, Sparkles, Settings, Plug, Wifi, WifiOff, TestTube, Volume2, Mic, MicOff } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 
 interface VTubeStudioSettings {
@@ -18,6 +18,12 @@ export default function VTubeStudioPage() {
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
+
+  // Mouth movement state
+  const [mouthMoving, setMouthMoving] = useState(false)
+  const [mouthDuration, setMouthDuration] = useState('5')
+  const [mouthTesting, setMouthTesting] = useState(false)
+  const [mouthStatus, setMouthStatus] = useState<{ is_moving: boolean; connected: boolean; authenticated: boolean } | null>(null)
 
   useEffect(() => {
     loadSettings()
@@ -98,6 +104,9 @@ export default function VTubeStudioPage() {
           </Link>
           <Link to="/settings" className="flex items-center gap-1 px-3 py-1 text-sm text-text-muted hover:text-text rounded hover:bg-surface-light">
             <Settings className="h-3 w-3" />Provider Settings
+          </Link>
+          <Link to="/tts-settings" className="flex items-center gap-1 px-3 py-1 text-sm text-text-muted hover:text-text rounded hover:bg-surface-light">
+            <Volume2 className="h-3 w-3" />TTS Settings
           </Link>
           <Link to="/vtube-studio" className="flex items-center gap-1 px-3 py-1 text-sm text-primary bg-primary/10 rounded">
             <Plug className="h-3 w-3" />VTube Studio

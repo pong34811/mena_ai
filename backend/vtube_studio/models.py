@@ -11,8 +11,8 @@ class VTubeStudioSettings(models.Model):
 
     api_url = models.CharField(
         max_length=255,
-        default='ws://127.0.0.1:9000',
-        help_text='WebSocket URL สำหรับเชื่อมต่อ VTube Studio API (เช่น ws://127.0.0.1:9000)'
+        default='ws://192.168.1.10:9000',
+        help_text='WebSocket URL สำหรับเชื่อมต่อ VTube Studio API (เช่น ws://192.168.1.10:9000)'
     )
     port = models.IntegerField(
         default=9000,

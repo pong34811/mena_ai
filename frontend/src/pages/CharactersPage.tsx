@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
-import { Link, useParams, useNavigate } from 'react-router-dom'
+import { Link, useParams, useNavigate, useLocation } from 'react-router-dom'
 import { characterApi } from '@/services/api'
 import type { Character } from '@/types'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { Plus, Pencil, Trash2, X, Sparkles, MessageSquare, Settings, Volume2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, Sparkles, MessageSquare, Settings, Volume2, Video } from 'lucide-react'
 
 const LANGUAGES = [
   { value: 'thai', label: '🇹🇭 ไทย (Thai)' },
@@ -49,6 +49,7 @@ const emptyForm: FormData = {
 export default function CharactersPage() {
   const { id: editId } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const [characters, setCharacters] = useState<Character[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -65,6 +66,14 @@ export default function CharactersPage() {
   useEffect(() => {
     loadCharacters()
   }, [])
+
+  useEffect(() => {
+    if (location.pathname === '/characters/new') {
+      setShowForm(true)
+      setIsEdit(false)
+      setFormData(emptyForm)
+    }
+  }, [location.pathname])
 
   useEffect(() => {
     if (editId) {
@@ -207,6 +216,9 @@ export default function CharactersPage() {
           </Link>
           <Link to="/tts-settings" className="flex items-center gap-1 px-3 py-1 text-sm text-text-muted hover:text-text rounded hover:bg-surface-light">
             <Volume2 className="h-3 w-3" />TTS Settings
+          </Link>
+          <Link to="/vtube-studio" className="flex items-center gap-1 px-3 py-1 text-sm text-text-muted hover:text-text rounded hover:bg-surface-light">
+            <Video className="h-3 w-3" />VTube Studio
           </Link>
         </nav>
       </header>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Volume2, User, Bot, Loader2, MessageSquare, Sparkles, Settings } from 'lucide-react'
+import { Volume2, User, Bot, Loader2, MessageSquare, Sparkles, Settings, Video } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { ttsApi } from '@/services/api'
 
@@ -155,6 +155,9 @@ export default function TTSSettingsPage() {
           </Link>
           <Link to="/tts-settings" className="flex items-center gap-1 px-3 py-1 text-sm text-primary bg-primary/10 rounded">
             <Volume2 className="h-3 w-3" />TTS Settings
+          </Link>
+          <Link to="/vtube-studio" className="flex items-center gap-1 px-3 py-1 text-sm text-text-muted hover:text-text rounded hover:bg-surface-light">
+            <Video className="h-3 w-3" />VTube Studio
           </Link>
         </nav>
       </header>

@@ -7,6 +7,11 @@ from django.urls import path, include
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/', include('core.urls')),
-    path('api/', include('vtube_studio.urls')),
+    path('api/', include([
+        path('', include('core.urls')),
+        path('', include('providers.urls')),
+        path('', include('chat_messages.urls')),
+        path('', include('messages_tts.urls')),
+        path('', include('vtube_studio.urls')),
+    ])),
 ]

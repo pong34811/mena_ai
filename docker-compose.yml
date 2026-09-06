@@ -1,0 +1,103 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: mena_ai
+      POSTGRES_USER: mena_ai
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mena_ai -d mena_ai"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    secrets:
+      - db_password
+    networks:
+      - internal_net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      DJANGO_SECRET_KEY: django-insecure-dev-key-change-me
+      DJANGO_DEBUG: "True"
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,backend,192.168.1.10
+      DATABASE_URL: postgres://mena_ai:mena_ai_pass@db:5432/mena_ai
+      FREE_LLM_API_URL: http://freellmapi:3001/v1/chat/completions
+    volumes:
+      - ./backend:/app
+      - tts_cache:/app/tts_cache
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - internal_net
+      - backend_net
+      - frontend_net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      VITE_BACKEND_URL: http://backend:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    networks:
+      - frontend_net
+
+  freellmapi:
+    image: ghcr.io/tashfeenahmed/freellmapi:latest
+    restart: unless-stopped
+    container_name: mena_ai-freellmapi
+    environment:
+      PORT: 3001
+      HOST_BIND: 0.0.0.0
+    env_file:
+      - ./freellmapi/.env
+    volumes:
+      - freellmapi_data:/app/server/data
+    ports:
+      - "31415:3001"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3001/api/ping"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    networks:
+      - backend_net
+
+volumes:
+  postgres_data:
+  tts_cache:
+  freellmapi_data:
+
+networks:
+  internal_net:
+    internal: true
+  backend_net:
+  frontend_net:
+
+secrets:
+  db_password:
+    file: ./db_password.txt
