@@ -11,7 +11,7 @@ class LLMProvider(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100, default="Free LLM API")
-    api_url = models.URLField(default="http://192.168.1.10:31415/v1/chat/completions")
+    api_url = models.URLField(default="http://192.168.1.10:9001/v1/chat/completions")
     api_key = models.CharField(max_length=255, blank=True)
     model_name = models.CharField(max_length=100, default="auto")
     temperature = models.FloatField(default=0.7)

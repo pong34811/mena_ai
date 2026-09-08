@@ -140,15 +140,28 @@ class TTSService:
             logger.debug(f"TTS cache hit: {cache_path.name}")
             return cache_path
         
-        # Generate new audio (always run in new event loop to avoid Django issues)
+        # Generate new audio via subprocess (avoids Daphne event loop issues)
         try:
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(
-                    asyncio.run,
-                    self._generate_async(text, cache_path)
-                )
-                success = future.result(timeout=30)
+            import subprocess
+            import sys
+            import tempfile
+            # Write a temp script to avoid shell escaping issues
+            script = '''import asyncio, edge_tts, sys
+text, voice, rate, path = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+asyncio.run(edge_tts.Communicate(text, voice, rate=rate).save(path))
+'''
+            with tempfile.NamedTemporaryFile(suffix='.py', mode='w', delete=False, encoding='utf-8') as tmp:
+                tmp.write(script)
+                tmp_path = tmp.name
+            result = subprocess.run(
+                [sys.executable, tmp_path, text, self.voice, self.rate, str(cache_path)],
+                capture_output=True, timeout=30
+            )
+            import os
+            os.unlink(tmp_path)
+            success = result.returncode == 0
+            if not success:
+                logger.error(f"TTS subprocess failed: {result.stderr.decode('utf-8', 'replace')[:300]}")
         except Exception as e:
             logger.error(f"TTS generation error: {e}")
             return None

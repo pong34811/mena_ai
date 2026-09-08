@@ -35,7 +35,7 @@ D:/mena_ai/
 - **Python**: 3.14, Django 6.1, DRF. Venv at `.venv/` (activate: `source .venv/Scripts/activate`)
 - **Frontend**: Vite proxy forwards `/api` → Django `:8000`. Run with `npm run dev` (port 5173)
 - **API base**: `/api` (proxied in dev, served by Django in prod)
-- **LLM**: Free LLM API at `http://127.0.0.1:31415/v1/chat/completions` (model=auto)
+- **LLM**: Free LLM API at `http://127.0.0.1:9001/v1/chat/completions` (model=auto)
 - **TTS**: `edge-tts` (Microsoft Edge TTS), voices cached in `backend/tts_cache/`
 - **YouTube chat**: pytchat (real-time streaming, NOT yt-dlp)
 - **Database**: SQLite (`backend/db.sqlite3`)
@@ -122,7 +122,7 @@ POST /api/chat/
 DJANGO_SECRET_KEY=...
 DJANGO_DEBUG=True
 DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
-FREE_LLM_API_URL=http://127.0.0.1:31415/v1/chat/completions
+FREE_LLM_API_URL=http://127.0.0.1:9001/v1/chat/completions
 FREE_LLM_API_KEY=...
 FREE_LLM_MODEL=auto
 ```
@@ -132,5 +132,5 @@ FREE_LLM_MODEL=auto
 - Venv activation on Windows uses `Scripts/activate` (not `bin/activate`)
 - `edge-tts` requires `asyncio` — TTS views are async Django views
 - YouTube chat uses pytchat which needs the video to be **currently live**
-- Free LLM API must be running separately at port 31415
+- Free LLM API must be running separately at port 9001
 - Vite config uses `__dirname` (shows warning but works)

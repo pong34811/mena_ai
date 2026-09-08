@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/Input'
 import { Send, User, Bot, ArrowLeft, Play, Square, Zap, Video, Volume2, VolumeX, SkipForward, MessageSquare, Sparkles, Settings, Cog } from 'lucide-react'
 import { useHowlerTTS } from '@/hooks/useHowlerTTS'
 import { useChatWebSocket } from '@/hooks/useChatWebSocket'
+import { useYouTubeWebSocket } from '@/hooks/useYouTubeWebSocket'
 import { TtsConfigModal } from '@/components/ui/TtsConfigModal'
 
 interface DisplayMessage {
@@ -41,16 +42,98 @@ export default function ChatPage() {
   // Live counters derived from the yt-messages feed (same source as the list).
   const [ytCounts, setYtCounts] = useState({ messages: 0, replies: 0 })
   const ytSeenMsgIds = useRef<Set<string>>(new Set())
-  const ytSeenReplyIds = useRef<Set<string>>(new Set())
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const ytPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   // Streaming message being built token-by-token
   const [streamMsg, setStreamMsg] = useState<{ id: string; content: string } | null>(null)
+  // Capture the user's original message so WebSocket onDone can speak it
+  const lastUserMsgRef = useRef<string>('')
 
   // TTS Hook (client-side Howler)
   const tts = useHowlerTTS()
   const ttsEnabled = tts.settings?.questioner_enabled || tts.settings?.responder_enabled || false
+
+  // YouTube WebSocket — replaces the old polling loop
+  useYouTubeWebSocket({
+    enabled: !!ytSession,
+    onMessage: useCallback((event) => {
+      if (!event.id || ytSeenMsgIds.current.has(event.id)) return
+      ytSeenMsgIds.current.add(event.id)
+      setYtCounts((prev) => ({ ...prev, messages: prev.messages + 1 }))
+
+      const userMsg: DisplayMessage = {
+        id: `yt-${event.id}`,
+        role: 'user',
+        content: event.text || '',
+        timestamp: new Date(event.received_at || Date.now()),
+        author: event.author_name,
+        isSuperChat: event.is_super_chat,
+        isMod: event.is_mod,
+        isOwner: event.is_owner,
+        isYouTube: true,
+      }
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === userMsg.id)) return prev
+        const merged = [...prev, userMsg]
+        merged.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+        return merged.slice(-100)
+      })
+
+      // Speak the viewer message (questioner)
+      tts.speakExchange({
+        questioner_text: event.text || '',
+        questioner_author: event.author_name,
+        responder_text: event.ai_responded ? event.ai_response || '' : '',
+        source: 'youtube',
+        source_id: event.id,
+      })
+
+      // If AI already replied, add the assistant message too
+      if (event.ai_responded && event.ai_response) {
+        const aiMsg: DisplayMessage = {
+          id: `yt-ai-${event.id}`,
+          role: 'assistant',
+          content: event.ai_response,
+          timestamp: new Date(event.received_at || Date.now()),
+          isYouTube: true,
+        }
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === aiMsg.id)) return prev
+          const merged = [...prev, aiMsg]
+          merged.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+          return merged.slice(-100)
+        })
+      }
+    }, [tts]),
+    onReply: useCallback((event) => {
+      if (!event.id) return
+      setYtCounts((prev) => ({ ...prev, replies: prev.replies + 1 }))
+
+      const aiMsg: DisplayMessage = {
+        id: `yt-ai-${event.id}`,
+        role: 'assistant',
+        content: event.ai_response || '',
+        timestamp: new Date(),
+        isYouTube: true,
+      }
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === aiMsg.id)) return prev
+        const merged = [...prev, aiMsg]
+        merged.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+        return merged.slice(-100)
+      })
+
+      // Speak the AI reply (responder) — questioner was already spoken when
+      // the original message arrived, so we only enqueue the responder here.
+      tts.speakExchange({
+        questioner_text: '',
+        questioner_author: '',
+        responder_text: event.ai_response || '',
+        source: 'youtube',
+        source_id: event.id,
+      })
+    }, [tts]),
+  })
 
   // TTS Config Modal state
   const [showTtsModal, setShowTtsModal] = useState(false)
@@ -77,10 +160,18 @@ export default function ChatPage() {
             timestamp: new Date(),
           }]
         })
-        // Speak the exchange
+        // Speak the exchange — use the user's original message + AI reply
+        tts.speakExchange({
+          questioner_text: lastUserMsgRef.current || '',
+          questioner_author: userName || 'You',
+          responder_text: contentText,
+          source: 'chat',
+          source_id: id,
+        })
+        lastUserMsgRef.current = ''
         return null
       })
-    }, []),
+    }, [tts, userName]),
     onError: useCallback((error: string) => {
       setStreamMsg(null)
       setError(error)
@@ -96,24 +187,9 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Poll YouTube messages when session is active
-  useEffect(() => {
-    if (ytSession && ytSession.status === 'active') {
-      ytPollRef.current = setInterval(fetchYtMessages, 2000)
-      fetchYtMessages()
-    } else if (ytPollRef.current) {
-      clearInterval(ytPollRef.current)
-      ytPollRef.current = null
-    }
-    return () => {
-      if (ytPollRef.current) clearInterval(ytPollRef.current)
-    }
-  }, [ytSession?.id, ytSession?.status])
-
   // Reset live counters whenever the watched session changes.
   useEffect(() => {
     ytSeenMsgIds.current = new Set()
-    ytSeenReplyIds.current = new Set()
     setYtCounts({ messages: 0, replies: 0 })
   }, [ytSession?.id])
 
@@ -139,80 +215,6 @@ export default function ChatPage() {
       // No existing session
     }
   }
-
-  const fetchYtMessages = useCallback(async () => {
-    if (!ytSession) return
-    try {
-      const data = await youtubeChatApi.getMessages(ytSession.id)
-      const ytMsgs = data.results || []
-
-      const newMessages: DisplayMessage[] = []
-      let newMsgCount = 0
-      let newReplyCount = 0
-      for (const ytMsg of ytMsgs) {
-        if (!ytSeenMsgIds.current.has(ytMsg.id)) {
-          ytSeenMsgIds.current.add(ytMsg.id)
-          newMsgCount += 1
-        }
-        if (ytMsg.ai_responded && !ytSeenReplyIds.current.has(ytMsg.id)) {
-          ytSeenReplyIds.current.add(ytMsg.id)
-          newReplyCount += 1
-        }
-        newMessages.push({
-          id: `yt-${ytMsg.id}`,
-          role: 'user',
-          content: ytMsg.text,
-          timestamp: new Date(ytMsg.received_at),
-          author: ytMsg.author_name,
-          isSuperChat: ytMsg.is_super_chat,
-          isMod: ytMsg.is_mod,
-          isOwner: ytMsg.is_owner,
-          isYouTube: true,
-        })
-        if (ytMsg.ai_responded && ytMsg.ai_response) {
-          newMessages.push({
-            id: `yt-ai-${ytMsg.id}`,
-            role: 'assistant',
-            content: ytMsg.ai_response,
-            timestamp: new Date(ytMsg.received_at),
-            isYouTube: true,
-          })
-        }
-        // Speak the viewer message when it arrives (questioner, gated by
-        // questioner_enabled) and its AI reply later if/when one appears.
-        // Deduplicated inside the hook, so late replies are spoken exactly once.
-        tts.speakExchange({
-          questioner_text: ytMsg.text,
-          questioner_author: ytMsg.author_name,
-          responder_text: ytMsg.ai_responded ? ytMsg.ai_response || '' : '',
-          source: 'youtube',
-          source_id: String(ytMsg.id),
-        })
-      }
-
-      if (newMsgCount > 0 || newReplyCount > 0) {
-        setYtCounts((prev) => ({
-          messages: prev.messages + newMsgCount,
-          replies: prev.replies + newReplyCount,
-        }))
-      }
-
-      setMessages((prev) => {
-        const existingIds = new Set(prev.map(m => m.id))
-        const merged = [...prev]
-        for (const msg of newMessages) {
-          if (!existingIds.has(msg.id)) {
-            merged.push(msg)
-            existingIds.add(msg.id)
-          }
-        }
-        merged.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
-        return merged.slice(-100)
-      })
-    } catch {
-      // Ignore poll errors
-    }
-  }, [ytSession?.id])
 
   const extractVideoId = (url: string): string | null => {
     const patterns = [
@@ -295,15 +297,17 @@ export default function ChatPage() {
     }
 
     setMessages((prev) => [...prev, userMessage])
+    lastUserMsgRef.current = input.trim()
     setInput('')
     setError(null)
 
+    // Force HTTP for now — WebSocket is unstable (reconnect loop)
     // Try WebSocket streaming first, fall back to HTTP
-    const sent = ws.sendChat(selectedCharacter.id, userMessage.content, userName)
-    if (sent) {
-      setStreamMsg({ id: `stream-${Date.now()}`, content: '' })
-      return
-    }
+    // const sent = ws.sendChat(selectedCharacter.id, userMessage.content, userName)
+    // if (sent) {
+    //   setStreamMsg({ id: `stream-${Date.now()}`, content: '' })
+    //   return
+    // }
 
     // HTTP fallback
     setLoading(true)
@@ -531,10 +535,6 @@ export default function ChatPage() {
             <Link to="/tts-settings" className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg text-text-muted hover:bg-surface-light hover:text-text">
               <Settings className="h-4 w-4" />
               <span>TTS Settings</span>
-            </Link>
-            <Link to="/vtube-studio" className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg text-text-muted hover:bg-surface-light hover:text-text">
-              <Video className="h-4 w-4" />
-              <span>VTube Studio</span>
             </Link>
           </nav>
           <div className="flex items-center gap-2">

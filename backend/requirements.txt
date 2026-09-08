@@ -11,3 +11,6 @@ pytchat>=0.5.5
 edge-tts>=7.0
 dj-database-url>=2.0
 watchfiles>=0.21
+whitenoise>=6.0
+pytest>=8.0
+pytest-django>=4.7

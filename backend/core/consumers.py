@@ -1,13 +1,18 @@
 """
-WebSocket consumer for streaming chat tokens — Proof-of-concept.
+WebSocket consumers for:
+  - Chat stream (LLM token streaming)
+  - YouTube live chat messages (push from server instead of client polling)
 """
 import json
 import logging
 import uuid
+import asyncio
 import threading
 import queue
 
 from channels.generic.websocket import AsyncWebsocketConsumer
+from channels.db import database_sync_to_async
+from channels.layers import get_channel_layer
 
 logger = logging.getLogger(__name__)
 
@@ -246,3 +251,84 @@ class ChatStreamConsumer(AsyncWebsocketConsumer):
                 "type": "error",
                 "error": f"Internal error: {str(e)}"
             }))
+
+
+# ── YouTube Live Chat WebSocket ───────────────────────────────────────
+# Clients connect and join a group; the YouTube chat service pushes
+# messages to the group via the channel layer.
+
+_YT_GROUP = "youtube_chat"
+
+
+class YouTubeChatConsumer(AsyncWebsocketConsumer):
+    """
+    Receives YouTube live chat messages pushed from the server.
+
+    Protocol (server → client):
+      {"type": "yt_message", "id": "...", "author_name": "...", "text": "...",
+       "is_mod": false, "is_owner": false, "is_super_chat": false,
+       "ai_responded": false, "ai_response": "", "received_at": "..."}
+      {"type": "yt_reply", "id": "...", "ai_response": "..."}   # late AI reply
+
+    The client subscribes automatically on connect; no subscription message needed.
+    """
+
+    async def connect(self):
+        await self.accept()
+        await self.channel_layer.add_group(_YT_GROUP)
+        self.channel_layer.channel_name  # ensure channel layer is ready
+        logger.info("YouTubeChatConsumer connected")
+        await self.send(text_data=json.dumps({"type": "yt_connected"}))
+
+    async def disconnect(self, close_code):
+        await self.channel_layer.discard_group(_YT_GROUP)
+        logger.info("YouTubeChatConsumer disconnected")
+
+    async def receive(self, text_data):
+        # Clients don't need to send anything; ignore incoming messages.
+        pass
+
+    async def yt_message_event(self, event):
+        """Handler for messages sent to the youtube_chat group."""
+        await self.send(text_data=json.dumps(event["data"]))
+
+
+def yt_notify_message(yt_msg):
+    """Called from the YouTube chat service thread when a new message arrives."""
+    layer = get_channel_layer()
+    if not layer:
+        return
+    payload = {
+        "type": "yt_message",
+        "id": str(yt_msg.id),
+        "author_name": yt_msg.author_name,
+        "text": yt_msg.text,
+        "is_mod": yt_msg.is_mod,
+        "is_owner": yt_msg.is_owner,
+        "is_super_chat": yt_msg.is_super_chat,
+        "ai_responded": yt_msg.ai_responded,
+        "ai_response": yt_msg.ai_response or "",
+        "received_at": yt_msg.received_at.isoformat() if yt_msg.received_at else None,
+    }
+    try:
+        from asgiref.sync import async_to_sync
+        async_to_sync(layer.group_send)(_YT_GROUP, {"type": "yt_message_event", "data": payload})
+    except Exception as e:
+        logger.warning("Failed to broadcast yt_message: %s", e)
+
+
+def yt_notify_reply(yt_msg):
+    """Called when an AI reply lands after the initial message was broadcast."""
+    layer = get_channel_layer()
+    if not layer:
+        return
+    payload = {
+        "type": "yt_reply",
+        "id": str(yt_msg.id),
+        "ai_response": yt_msg.ai_response or "",
+    }
+    try:
+        from asgiref.sync import async_to_sync
+        async_to_sync(layer.group_send)(_YT_GROUP, {"type": "yt_message_event", "data": payload})
+    except Exception as e:
+        logger.warning("Failed to broadcast yt_reply: %s", e)

@@ -26,7 +26,7 @@ def tts_generate(request: Request) -> Response:
     
     Request body:
         - text: Text to convert to speech (required)
-        - voice: Voice ID (optional, default: th-TH-Neural2-A)
+        - voice: Voice ID (optional, default: th-TH-PremwadeeNeural)
         - rate: Speech rate adjustment (optional, default: +0%)
         - format: Response format - 'file' or 'json' (optional, default: file)
     
@@ -34,7 +34,7 @@ def tts_generate(request: Request) -> Response:
         MP3 audio file or JSON with audio data
     """
     text = request.data.get('text', '').strip()
-    voice = request.data.get('voice', DEFAULT_VOICE)
+    voice = request.data.get('voice', DEFAULT_VOICE) or DEFAULT_VOICE
     rate = request.data.get('rate', '+0%')
     response_format = request.data.get('format', 'file')
     
@@ -87,7 +87,7 @@ def tts_generate(request: Request) -> Response:
             return response
             
     except Exception as e:
-        logger.error(f"TTS endpoint error: {e}")
+        logger.error(f"TTS endpoint error: {e}", exc_info=True)
         return Response(
             {'error': f'TTS generation failed: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR

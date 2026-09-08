@@ -144,9 +144,19 @@ def chat(request: Request) -> Response:
 def health_check(request: Request) -> Response:
     llm = LLMService()
     result = llm.health_check()
+
+    # Check if any provider is configured in DB
+    provider_configured = False
+    try:
+        from providers.models import LLMProvider
+        provider_configured = LLMProvider.objects.filter(is_active=True).exists()
+    except Exception:
+        pass
+
     return Response({
         'status': 'ok',
-        'llm_api': 'connected' if result['reachable'] else 'disconnected',
+        'llm_api': 'connected' if (result['reachable'] and provider_configured) else 'disconnected',
+        'provider_configured': provider_configured,
         'models_available': result['models_available'],
         'models': result['models'],
         'selected_model': result['selected_model'],

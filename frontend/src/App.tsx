@@ -4,7 +4,6 @@ import ChatPage from './pages/ChatPage'
 import SettingsPage from './pages/SettingsPage'
 import CharactersPage from './pages/CharactersPage'
 import TTSSettingsPage from './pages/TTSSettingsPage'
-import VTubeStudioPage from './pages/VTubeStudioPage'
 
 function App() {
   return (
@@ -14,7 +13,6 @@ function App() {
         <Route path="/chat" element={<ChatPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/tts-settings" element={<TTSSettingsPage />} />
-        <Route path="/vtube-studio" element={<VTubeStudioPage />} />
         <Route path="/characters" element={<CharactersPage />} />
         <Route path="/characters/new" element={<CharactersPage />} />
         <Route path="/characters/edit/:id" element={<CharactersPage />} />

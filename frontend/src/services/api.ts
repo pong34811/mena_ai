@@ -137,13 +137,15 @@ export const youtubeChatApi = {
 // TTS API
 export const ttsApi = {
   generate: async (text: string, voice?: string, rate?: string): Promise<Blob> => {
+    console.log('[TTS] generate called:', { text: text.slice(0, 50), voice, rate })
     const { data } = await api.post('/tts/generate/', {
       text,
-      voice,
-      rate,
+      voice: voice || 'th-TH-PremwadeeNeural',
+      rate: rate || '+0%',
     }, {
       responseType: 'blob',
     });
+    console.log('[TTS] response blob size:', (data as Blob).size);
     return data;
   },
 

@@ -19,12 +19,10 @@ COPY . .
 # Create tts_cache directory
 RUN mkdir -p tts_cache
 
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -fsS http://localhost:8000/api/health/ || exit 1
 
-CMD ["/entrypoint.sh"]
+# Run migrations then start Daphne
+CMD ["sh", "-c", "python manage.py migrate --noinput && daphne -b 0.0.0.0 -p 8000 config.asgi:application"]

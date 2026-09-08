@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TTS Test - MENA AI VTuber</title>
+    <style>
+        body { font-family: system-ui; max-width: 600px; margin: 40px auto; padding: 0 20px; }
+        button { padding: 12px 24px; font-size: 16px; cursor: pointer; margin: 8px 0; display: block; width: 100%; }
+        input, select { padding: 8px; font-size: 14px; width: 100%; margin: 4px 0; }
+        .log { background: #f0f0f0; padding: 12px; margin: 8px 0; font-family: monospace; font-size: 12px; max-height: 300px; overflow: auto; }
+    </style>
+</head>
+<body>
+    <h1>TTS Test</h1>
+    <input type="text" id="text" value="สวัสดีค่ะ ยินดีต้อนรับ" placeholder="พิมพ์ข้อความ..." />
+    <select id="voice">
+        <option value="th-TH-PremwadeeNeural">Thai Female (Premwadee)</option>
+        <option value="th-TH-NiwatNeural">Thai Male (Niwat)</option>
+        <option value="en-US-AriaNeural">English Female (Aria)</option>
+    </select>
+    <button onclick="generate()">Generate TTS & Play</button>
+    <div class="log" id="log"></div>
+    <audio id="audio" controls style="width: 100%; margin-top: 12px;"></audio>
+
+    <script>
+        const log = document.getElementById('log');
+        const audio = document.getElementById('audio');
+
+        function addLog(msg) {
+            log.innerHTML += msg + '<br>';
+            log.scrollTop = log.scrollHeight;
+        }
+
+        async function generate() {
+            const text = document.getElementById('text').value;
+            const voice = document.getElementById('voice').value;
+            addLog(`Generating: "${text.slice(0, 40)}" with ${voice}...`);
+            try {
+                const resp = await fetch('/api/tts/generate/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text, voice, rate: '+0%' })
+                });
+                if (!resp.ok) {
+                    addLog(`Error: ${resp.status}`);
+                    return;
+                }
+                const blob = await resp.blob();
+                addLog(`OK: ${blob.size} bytes`);
+                audio.src = URL.createObjectURL(blob);
+                audio.play().catch(e => addLog(`Play error: ${e.message}`));
+            } catch (err) {
+                addLog(`Fetch error: ${err.message}`);
+            }
+        }
+    </script>
+</body>
+</html>

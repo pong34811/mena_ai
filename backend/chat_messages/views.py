@@ -21,6 +21,7 @@ from .serializers import (
     YouTubeChatStartSerializer,
 )
 from core.youtube_chat import YouTubeLiveChatService, ChatMessage as YTChatMessage
+from core.consumers import yt_notify_message, yt_notify_reply
 from core.services import LLMService, LLMServiceError
 from core.views import _get_character
 
@@ -92,6 +93,9 @@ class YouTubeChatSessionManager:
                 messages_received=F('messages_received') + 1
             )
 
+            # Push the new message to all connected WebSocket clients
+            yt_notify_message(yt_msg)
+
             if auto_reply and self._llm and self._character:
                 try:
                     messages = [{"role": "system", "content": self._base_system_prompt}]
@@ -127,6 +131,9 @@ class YouTubeChatSessionManager:
                     YouTubeLiveChatSession.objects.filter(pk=db_session.pk).update(
                         replies_sent=F('replies_sent') + 1
                     )
+
+                    # Push the AI reply to all connected WebSocket clients
+                    yt_notify_reply(yt_msg)
 
                     # Update cache
                     self._author_history_cache[cache_key].append({

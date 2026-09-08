@@ -44,6 +44,7 @@ export interface ChatResponse {
 export interface HealthResponse {
   status: string;
   llm_api: 'connected' | 'disconnected';
+  provider_configured?: boolean;
   models_available?: number;
   models?: string[];
   selected_model?: string;

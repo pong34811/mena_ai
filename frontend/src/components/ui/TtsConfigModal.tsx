@@ -1,7 +1,6 @@
-import * as React from 'react'
-import { X, Volume2, VolumeX, User, Bot } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { X, Volume2, VolumeX, User, Bot, Loader2 } from 'lucide-react'
 import { Button } from './Button'
-import { cn } from '@/lib/utils'
 
 interface TtsConfigModalProps {
   isOpen: boolean
@@ -16,18 +15,10 @@ interface TtsConfigModalProps {
   setAiTtsVoice: (voice: string) => void
 }
 
-const VOICES = [
-  { id: 'th-TH-PremwadeeNeural', name: 'Thai Female (Premwadee)', lang: 'Thai' },
-  { id: 'th-TH-NiwatNeural', name: 'Thai Male (Niwat)', lang: 'Thai' },
-  { id: 'en-US-AriaNeural', name: 'US Aria (Female)', lang: 'English' },
-  { id: 'en-US-GuyNeural', name: 'US Guy (Male)', lang: 'English' },
-  { id: 'en-US-JennyNeural', name: 'US Jenny (Female)', lang: 'English' },
-  { id: 'en-US-MichelleNeural', name: 'US Michelle (Female)', lang: 'English' },
-  { id: 'en-GB-SoniaNeural', name: 'UK Sonia (Female)', lang: 'English' },
-  { id: 'en-GB-RyanNeural', name: 'UK Ryan (Male)', lang: 'English' },
-  { id: 'ja-JP-NanamiNeural', name: 'JP Nanami (Female)', lang: 'Japanese' },
-  { id: 'ja-JP-KeitaNeural', name: 'JP Keita (Male)', lang: 'Japanese' },
-]
+interface VoiceGroup {
+  label: string
+  voices: Array<{ id: string; name: string; gender: string }>
+}
 
 export function TtsConfigModal({
   isOpen,
@@ -41,6 +32,34 @@ export function TtsConfigModal({
   aiTtsVoice,
   setAiTtsVoice,
 }: TtsConfigModalProps) {
+  const [voices, setVoices] = useState<VoiceGroup[]>([])
+  const [loadingVoices, setLoadingVoices] = useState(true)
+
+  useEffect(() => {
+    if (!isOpen) return
+    let cancelled = false
+    setLoadingVoices(true)
+    fetch('/api/tts/voices/')
+      .then((r) => (r.ok ? r.json() : Promise.reject(r)))
+      .then((data) => {
+        if (cancelled || !data.voices) return
+        const groups: VoiceGroup[] = Object.entries(data.voices).map(
+          ([label, v]) => ({
+            label: label.charAt(0).toUpperCase() + label.slice(1),
+            voices: v as Array<{ id: string; name: string; gender: string }>,
+          })
+        )
+        setVoices(groups)
+      })
+      .catch((err) => console.error('Failed to load TTS voices:', err))
+      .finally(() => {
+        if (!cancelled) setLoadingVoices(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen])
+
   if (!isOpen) return null
 
   return (
@@ -92,27 +111,26 @@ export function TtsConfigModal({
               </Button>
             </div>
             {userTtsEnabled && (
-              <select
-                value={userTtsVoice}
-                onChange={(e) => setUserTtsVoice(e.target.value)}
-                className="w-full text-sm bg-surface-light border border-border rounded-lg px-3 py-2 text-text focus:outline-none focus:border-primary"
-              >
-                <optgroup label="Thai">
-                  {VOICES.filter(v => v.lang === 'Thai').map(v => (
-                    <option key={v.id} value={v.id}>{v.name}</option>
+              loadingVoices ? (
+                <div className="flex items-center gap-2 text-sm text-text-muted py-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  กำลังโหลดรายการเสียง...
+                </div>
+              ) : (
+                <select
+                  value={userTtsVoice}
+                  onChange={(e) => setUserTtsVoice(e.target.value)}
+                  className="w-full text-sm bg-surface-light border border-border rounded-lg px-3 py-2 text-text focus:outline-none focus:border-primary"
+                >
+                  {voices.map((g) => (
+                    <optgroup key={g.label} label={g.label}>
+                      {g.voices.map((v) => (
+                        <option key={v.id} value={v.id}>{v.name}</option>
+                      ))}
+                    </optgroup>
                   ))}
-                </optgroup>
-                <optgroup label="English">
-                  {VOICES.filter(v => v.lang === 'English').map(v => (
-                    <option key={v.id} value={v.id}>{v.name}</option>
-                  ))}
-                </optgroup>
-                <optgroup label="Japanese">
-                  {VOICES.filter(v => v.lang === 'Japanese').map(v => (
-                    <option key={v.id} value={v.id}>{v.name}</option>
-                  ))}
-                </optgroup>
-              </select>
+                </select>
+              )
             )}
           </div>
 
@@ -146,27 +164,26 @@ export function TtsConfigModal({
               </Button>
             </div>
             {aiTtsEnabled && (
-              <select
-                value={aiTtsVoice}
-                onChange={(e) => setAiTtsVoice(e.target.value)}
-                className="w-full text-sm bg-surface-light border border-border rounded-lg px-3 py-2 text-text focus:outline-none focus:border-primary"
-              >
-                <optgroup label="Thai">
-                  {VOICES.filter(v => v.lang === 'Thai').map(v => (
-                    <option key={v.id} value={v.id}>{v.name}</option>
+              loadingVoices ? (
+                <div className="flex items-center gap-2 text-sm text-text-muted py-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  กำลังโหลดรายการเสียง...
+                </div>
+              ) : (
+                <select
+                  value={aiTtsVoice}
+                  onChange={(e) => setAiTtsVoice(e.target.value)}
+                  className="w-full text-sm bg-surface-light border border-border rounded-lg px-3 py-2 text-text focus:outline-none focus:border-primary"
+                >
+                  {voices.map((g) => (
+                    <optgroup key={g.label} label={g.label}>
+                      {g.voices.map((v) => (
+                        <option key={v.id} value={v.id}>{v.name}</option>
+                      ))}
+                    </optgroup>
                   ))}
-                </optgroup>
-                <optgroup label="English">
-                  {VOICES.filter(v => v.lang === 'English').map(v => (
-                    <option key={v.id} value={v.id}>{v.name}</option>
-                  ))}
-                </optgroup>
-                <optgroup label="Japanese">
-                  {VOICES.filter(v => v.lang === 'Japanese').map(v => (
-                    <option key={v.id} value={v.id}>{v.name}</option>
-                  ))}
-                </optgroup>
-              </select>
+                </select>
+              )
             )}
           </div>
         </div>

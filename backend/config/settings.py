@@ -33,11 +33,11 @@ INSTALLED_APPS = [
     'providers',
     'chat_messages',
     'messages_tts',
-    'vtube_studio',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -122,6 +122,6 @@ CORS_ALLOWED_ORIGINS = [
 ]
 
 # Free LLM API Settings
-FREE_LLM_API_URL = os.getenv('FREE_LLM_API_URL', 'http://127.0.0.1:31415/v1/chat/completions')
+FREE_LLM_API_URL = os.getenv('FREE_LLM_API_URL', 'http://127.0.0.1:9001/v1/chat/completions')
 FREE_LLM_API_KEY = os.getenv('FREE_LLM_API_KEY', '')
 FREE_LLM_MODEL = os.getenv('FREE_LLM_MODEL', 'auto')

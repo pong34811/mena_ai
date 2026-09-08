@@ -1,7 +1,7 @@
 """
 LLM Service - connects to Free LLM API server with auto model selection.
 
-Performance design (benchmarked 2026-09-03, Free LLM API @ 127.0.0.1:31415):
+Performance design (benchmarked 2026-09-03, Free LLM API @ 127.0.0.1:9001):
 - `auto` is the default model (API routes to best available).
 - Module-level shared session / rate limiter / caches: Django creates a new
   service per request, so per-instance state never hits. Shared state fixes that.
@@ -122,12 +122,15 @@ def _get_session() -> requests.Session:
 
 
 def _get_limiter() -> RateLimiter:
-    """Process-wide rate limiter (115 req / 60s, just under the ~120 limit)."""
+    """
+    Process-wide rate limiter (25 req / 60s per worker).
+    Daphne spawns multiple workers; total ≈ workers × 25 must stay under ~120.
+    """
     global _shared_limiter
     if _shared_limiter is None:
         with _state_lock:
             if _shared_limiter is None:
-                _shared_limiter = RateLimiter(max_requests=115, window_seconds=60)
+                _shared_limiter = RateLimiter(max_requests=25, window_seconds=60)
     return _shared_limiter
 
 
