@@ -10,9 +10,9 @@ from .models import ChatMessage, YouTubeLiveChatSession, YouTubeChatMessage
 class ChatMessageAdmin(admin.ModelAdmin):
     """Admin for chat message history."""
 
-    list_display = ['character', 'role', 'content_preview', 'created_at']
+    list_display = ['character', 'role', 'user_name', 'content_preview', 'created_at']
     list_filter = ['role', 'created_at', 'character']
-    search_fields = ['content']
+    search_fields = ['content', 'user_name']
     readonly_fields = ['id', 'created_at']
 
     def content_preview(self, obj):

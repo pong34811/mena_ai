@@ -199,3 +199,16 @@ class Character(models.Model):
             return True
         target = re.findall(script, text)
         return len(target) >= max(1, len(letters) / 2)
+
+
+class CeleryMonitor(Character):
+    """Proxy model — gives the Celery dashboard a native admin entry.
+
+    No table of its own; CeleryMonitorAdmin.changelist_view renders live
+    worker/task data instead of a model list.
+    """
+
+    class Meta:
+        proxy = True
+        verbose_name = "Celery Worker Dashboard"
+        verbose_name_plural = "Celery Worker Dashboard"

@@ -1,0 +1,91 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<div id="content-main">
+    <div class="module" style="padding: 20px; background: #fff; border-radius: 8px;">
+        <h2>⚡ Celery Worker Dashboard</h2>
+        <p style="color: #666; margin-bottom: 20px;">Real-time inspection of background Celery workers, broker connection, and registered tasks.</p>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 24px;">
+            <div style="background: #f8f9fa; padding: 16px; border-radius: 6px; border-left: 4px solid #417690;">
+                <h3 style="margin: 0 0 8px 0; font-size: 14px;">Broker URL</h3>
+                <code style="word-break: break-all; font-size: 12px;">{{ broker_url }}</code>
+            </div>
+            <div style="background: #f8f9fa; padding: 16px; border-radius: 6px; border-left: 4px solid #417690;">
+                <h3 style="margin: 0 0 8px 0; font-size: 14px;">Result Backend</h3>
+                <code style="word-break: break-all; font-size: 12px;">{{ result_backend }}</code>
+            </div>
+            <div style="background: #f8f9fa; padding: 16px; border-radius: 6px; border-left: 4px solid {% if worker_count > 0 %}#28a745{% else %}#dc3545{% endif %};">
+                <h3 style="margin: 0 0 8px 0; font-size: 14px;">Active Workers</h3>
+                <span style="font-size: 24px; font-weight: bold; color: {% if worker_count > 0 %}#28a745{% else %}#dc3545{% endif %};">{{ worker_count }}</span>
+            </div>
+        </div>
+
+        {% if error %}
+        <div style="padding: 16px; background: #f8d7da; color: #721c24; border-radius: 6px; margin-bottom: 24px;">
+            ❌ Inspector unreachable: <code>{{ error }}</code>
+        </div>
+        {% endif %}
+
+        <h3>Workers</h3>
+        {% if worker_rows %}
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+                <thead>
+                    <tr style="background: #f1f1f1; text-align: left;">
+                        <th style="padding: 10px; border-bottom: 2px solid #ddd;">Worker</th>
+                        <th style="padding: 10px; border-bottom: 2px solid #ddd;">Status</th>
+                        <th style="padding: 10px; border-bottom: 2px solid #ddd;">Concurrency</th>
+                        <th style="padding: 10px; border-bottom: 2px solid #ddd;">Processed</th>
+                        <th style="padding: 10px; border-bottom: 2px solid #ddd;">Active Tasks</th>
+                        <th style="padding: 10px; border-bottom: 2px solid #ddd;">Registered</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in worker_rows %}
+                    <tr>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee;"><code>{{ row.name }}</code></td>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee;"><span style="color: #28a745; font-weight: bold;">● Online</span></td>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee;">{{ row.concurrency }}</td>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee;">{{ row.processed_total }}</td>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee;">{{ row.active_count }}</td>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee;">{{ row.task_count }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <div style="padding: 16px; background: #fff3cd; color: #856404; border-radius: 6px; margin-bottom: 24px;">
+                ⚠️ No active Celery workers found. Make sure the <code>celery-worker</code> container is running (<code>docker compose up -d celery-worker</code>).
+            </div>
+        {% endif %}
+
+        <h3>Active Tasks</h3>
+        {% for worker_name, tasks in active_tasks.items %}
+            <p style="margin-bottom: 4px;"><strong>{{ worker_name }}</strong>: {{ tasks|length }} running</p>
+            {% if tasks %}
+            <ul style="margin-top: 0;">
+                {% for task in tasks %}
+                <li><code>{{ task.name }}</code> <span style="color:#888;">(id: {{ task.id }})</span></li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+        {% empty %}
+            <p style="color: #666; font-style: italic;">No tasks currently running.</p>
+        {% endfor %}
+
+        <h3 style="margin-top: 24px;">Registered Tasks</h3>
+        {% for worker_name, tasks in registered_tasks.items %}
+            <p style="margin-bottom: 4px;"><strong>{{ worker_name }}</strong> ({{ tasks|length }} tasks):</p>
+            <ul style="columns: 2; column-gap: 20px; font-size: 13px; font-family: monospace; background: #fdfdfd; padding: 12px; border: 1px solid #eee; border-radius: 4px;">
+                {% for task in tasks %}
+                <li>{{ task }}</li>
+                {% endfor %}
+            </ul>
+        {% empty %}
+            <p style="color: #666; font-style: italic;">No registered tasks found.</p>
+        {% endfor %}
+
+        <p style="margin-top: 24px;"><a href="." style="text-decoration: none;">🔄 Refresh</a></p>
+    </div>
+</div>
+{% endblock %}
