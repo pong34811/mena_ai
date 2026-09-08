@@ -275,13 +275,22 @@ class YouTubeChatConsumer(AsyncWebsocketConsumer):
 
     async def connect(self):
         await self.accept()
-        await self.channel_layer.add_group(_YT_GROUP)
-        self.channel_layer.channel_name  # ensure channel layer is ready
+        # The channel-layer group API is group_add/group_discard (async on
+        # RedisChannelLayer). InMemoryChannelLayer (dev without Redis) has no
+        # group support at all — degrade gracefully instead of crashing the
+        # socket with AttributeError (which caused a reconnect loop).
+        try:
+            await self.channel_layer.group_add(_YT_GROUP, self.channel_name)
+        except AttributeError:
+            logger.warning("Channel layer has no group support; live YouTube push disabled")
         logger.info("YouTubeChatConsumer connected")
         await self.send(text_data=json.dumps({"type": "yt_connected"}))
 
     async def disconnect(self, close_code):
-        await self.channel_layer.discard_group(_YT_GROUP)
+        try:
+            await self.channel_layer.group_discard(_YT_GROUP, self.channel_name)
+        except AttributeError:
+            pass
         logger.info("YouTubeChatConsumer disconnected")
 
     async def receive(self, text_data):

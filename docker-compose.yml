@@ -10,6 +10,13 @@ services:
     ports:
       - "5432:5432"
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
   backend:
     build: ./backend
     env_file: ./backend/.env
@@ -18,6 +25,7 @@ services:
       DJANGO_ALLOWED_HOSTS: "*"
       DATABASE_URL: postgres://mena_ai:mena_ai@db:5432/mena_ai
       FREE_LLM_API_URL: http://freellmapi:9001/v1/chat/completions
+      REDIS_URL: redis://redis:6379/0
     volumes:
       - ./backend:/app
       - tts_cache:/app/tts_cache
@@ -25,6 +33,23 @@ services:
       - "8000:8000"
     depends_on:
       - db
+      - redis
+
+  celery-worker:
+    build: ./backend
+    command: celery -A config.celery worker -l info --concurrency=2
+    env_file: ./backend/.env
+    environment:
+      DJANGO_DEBUG: "True"
+      DATABASE_URL: postgres://mena_ai:mena_ai@db:5432/mena_ai
+      FREE_LLM_API_URL: http://freellmapi:9001/v1/chat/completions
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ./backend:/app
+      - tts_cache:/app/tts_cache
+    depends_on:
+      - db
+      - redis
 
   frontend:
     build: ./frontend
@@ -53,5 +78,6 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
   tts_cache:
   freellmapi_data:

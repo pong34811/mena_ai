@@ -53,6 +53,12 @@ READ_TIMEOUT = 60
 # with a larger budget so they can finish before we surface them.
 TRUNCATION_RETRY_MAX_TOKENS = 16384
 
+# But only retry a length-truncated reply when it is *clearly* cut off —
+# under this many chars. A 50+ char Thai VTuber reply is already a complete
+# "short" answer (the length budget is 160 chars); retrying it just burns
+# another full round trip through the model fallback chain for zero gain.
+TRUNCATION_RETRY_MIN_CHARS = 25
+
 
 class RateLimiter:
     """Simple sliding window rate limiter."""
@@ -442,7 +448,11 @@ class LLMService:
             finish_reason = choices[0].get('finish_reason')
 
             empty = not content
-            truncated = finish_reason == 'length'
+            # Only treat a length-truncated reply as "bad" when it is very
+            # short — a longer reply that merely hit the token budget is
+            # usable (enforce_response_length trims it anyway). Retrying
+            # those costs a full extra round trip through the fallback chain.
+            truncated = finish_reason == 'length' and len(content) < TRUNCATION_RETRY_MIN_CHARS
 
             # Auto-retry empty or truncated replies before surfacing them: an
             # empty body or a length-truncated body (hit its token budget
@@ -546,13 +556,18 @@ class LLMService:
                 if choices:
                     content = (choices[0].get('message', {}).get('content') or '').strip()
                     finish_reason = choices[0].get('finish_reason')
-                    if content and finish_reason != 'length':
+                    # Accept a usable reply even if it hit the token budget —
+                    # only reject when it is empty or clearly cut off mid-word.
+                    usable = content and (
+                        finish_reason != 'length' or len(content) >= TRUNCATION_RETRY_MIN_CHARS
+                    )
+                    if usable:
                         with _state_lock:
                             _working_model = model
                         logger.info(f"Fallback model {model} succeeded")
                         return content
                     logger.warning(
-                        f"Fallback model {model} returned empty/truncated content "
+                        f"Fallback model {model} returned empty/clearly-truncated content "
                         f"(finish_reason={finish_reason!r}); trying next model"
                     )
 

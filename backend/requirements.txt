@@ -14,3 +14,6 @@ watchfiles>=0.21
 whitenoise>=6.0
 pytest>=8.0
 pytest-django>=4.7
+celery>=5.3
+redis>=5.0
+pytest-asyncio>=0.24.0

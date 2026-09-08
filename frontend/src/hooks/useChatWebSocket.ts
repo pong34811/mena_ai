@@ -11,7 +11,18 @@ export function useChatWebSocket({ onToken, onDone, onError }: UseChatWebSocketO
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isUnmountedRef = useRef(false)
 
+  // Keep the latest callbacks in refs so the effect never re-runs (and the
+  // socket never reconnects) just because a parent re-rendered with new
+  // inline callbacks.
+  const onTokenRef = useRef(onToken)
+  onTokenRef.current = onToken
+  const onDoneRef = useRef(onDone)
+  onDoneRef.current = onDone
+  const onErrorRef = useRef(onError)
+  onErrorRef.current = onError
+
   const connect = useCallback(() => {
+    if (isUnmountedRef.current) return
     const existing = wsRef.current
     if (existing && existing.readyState !== WebSocket.CLOSED) return
 
@@ -26,13 +37,14 @@ export function useChatWebSocket({ onToken, onDone, onError }: UseChatWebSocketO
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data)
-        if (msg.type === 'token') onToken?.(msg.content)
-        else if (msg.type === 'done') onDone?.(msg.message_id, msg.content)
-        else if (msg.type === 'error') onError?.(msg.error)
+        if (msg.type === 'token') onTokenRef.current?.(msg.content)
+        else if (msg.type === 'done') onDoneRef.current?.(msg.message_id, msg.content)
+        else if (msg.type === 'error') onErrorRef.current?.(msg.error)
       } catch {}
     }
 
     ws.onclose = () => {
+      wsRef.current = null
       if (!isUnmountedRef.current) {
         reconnectTimeoutRef.current = setTimeout(connect, 3000)
       }
@@ -41,7 +53,7 @@ export function useChatWebSocket({ onToken, onDone, onError }: UseChatWebSocketO
     ws.onerror = () => {
       if (ws.readyState === WebSocket.OPEN) ws.close()
     }
-  }, [onToken, onDone, onError])
+  }, [])
 
   useEffect(() => {
     isUnmountedRef.current = false
@@ -51,6 +63,7 @@ export function useChatWebSocket({ onToken, onDone, onError }: UseChatWebSocketO
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current)
       const ws = wsRef.current
       if (ws && ws.readyState === WebSocket.OPEN) ws.close()
+      wsRef.current = null
     }
   }, [connect])
 

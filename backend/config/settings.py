@@ -70,12 +70,29 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # ASGI application for Channels
 ASGI_APPLICATION = 'config.asgi.application'
 
-# Channel layers (in-memory for development, Redis for production)
-CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels.layers.InMemoryChannelLayer',
-    },
-}
+# Channel layers: Redis when available (supports groups, needed for the
+# YouTube chat broadcast + cross-process pushes), in-memory fallback for
+# bare-metal dev without Redis.
+_REDIS_URL = os.getenv('REDIS_URL')
+if _REDIS_URL:
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels_redis.core.RedisChannelLayer',
+            'CONFIG': {
+                # Blocking receive waits brpop_timeout (5s) per poll; the
+                # socket read timeout must exceed it or redis-py aborts
+                # every idle wait with "Timeout reading from redis"
+                # (WebSocket reconnect loop).
+                'hosts': [{'address': _REDIS_URL, 'socket_timeout': 15}],
+            },
+        },
+    }
+else:
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels.layers.InMemoryChannelLayer',
+        },
+    }
 
 import dj_database_url
 
