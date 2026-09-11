@@ -148,6 +148,16 @@ export function useHowlerTTS(initialSettings?: TTSSettings) {
 
     if (appliedSinkRef.current === deviceId) return
 
+    // setSinkId only routes when the context is actually running. On a
+    // suspended context Chromium either throws InvalidStateError or resolves
+    // without routing — and caching that "success" would suppress every later
+    // re-apply, keeping chat audio on the default device. Resume first, and
+    // never cache an apply that ran pre-resume.
+    if (ctx.state === 'suspended') {
+      await ctx.resume().catch(() => {})
+      if (ctx.state === 'suspended') return
+    }
+
     try {
       await ctx.setSinkId(deviceId)
       appliedSinkRef.current = deviceId
@@ -233,7 +243,11 @@ export function useHowlerTTS(initialSettings?: TTSSettings) {
           // Browser blocked the first play (no user gesture yet) — unlock the
           // shared context and retry once before giving up.
           const ctx = Howler.ctx as AudioContext | null
-          ctx?.resume().then(() => {
+          ctx?.resume().then(async () => {
+            const deviceId = settingsRef.current?.output_device_id
+            if (deviceId && !appliedSinkRef.current) {
+              await applyOutputDevice(deviceId)
+            }
             sound.once('playerror', () => resolve())
             sound.once('end', () => resolve())
             sound.stop()
