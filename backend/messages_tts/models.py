@@ -54,6 +54,9 @@ class TTSSettings(models.Model):
     )
 
     # Output routing — where TTS audio plays (browser-side via Web Audio API)
+    # DEPRECATED: device selection now lives in the output_devices app
+    # (OutputDeviceSelection is the source of truth). Field kept so the running
+    # frontend can PATCH it until it fully migrates to the new endpoints.
     output_device_id = models.CharField(
         max_length=255,
         default='',
