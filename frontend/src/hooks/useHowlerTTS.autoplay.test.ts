@@ -3,80 +3,47 @@ import { act } from 'react'
 import { renderHook, cleanup, waitFor } from '@testing-library/react'
 import { useHowlerTTS, type TTSSettings } from './useHowlerTTS'
 
-const { generateMock, playState, ctx } = vi.hoisted(() => {
-  const ctx = {
-    state: 'suspended',
-    destination: {},
-    resume: vi.fn(async () => {
-      ctx.state = 'running'
-    }),
-    createBuffer: () => ({}),
-    createBufferSource: () => ({ buffer: null, connect: () => {}, start: () => {} }),
-  }
-  return { generateMock: vi.fn(), playState: { totalPlays: 0 }, ctx }
-})
+const { generateMock, audioEls } = vi.hoisted(() => ({
+  generateMock: vi.fn(),
+  audioEls: [] as HTMLAudioElement[],
+}))
 
 vi.mock('@/services/api', () => ({
   ttsApi: { generate: generateMock },
+  outputDeviceApi: {
+    getCurrent: vi.fn(async () => ({ device: null })),
+    capture: vi.fn(async () => ({})),
+  },
 }))
-
-// First play() is autoplay-blocked (fires playerror); a retry plays to completion.
-vi.mock('howler', () => {
-  class Howl {
-    private events = new Map<string, Array<(...args: unknown[]) => void>>()
-
-    once(event: string, cb: (...args: unknown[]) => void) {
-      const list = this.events.get(event) ?? []
-      list.push(cb)
-      this.events.set(event, list)
-      return this
-    }
-
-    play() {
-      playState.totalPlays += 1
-      if (playState.totalPlays === 1) {
-        for (const cb of this.events.get('playerror') ?? []) cb(new Error('autoplay blocked'))
-      } else {
-        queueMicrotask(() => {
-          for (const cb of this.events.get('end') ?? []) cb(0)
-        })
-      }
-      return 0
-    }
-
-    stop() {
-      return this
-    }
-  }
-
-  return { Howl, Howler: { ctx } }
-})
-
-const enabledSettings: TTSSettings = {
-  questioner_enabled: false,
-  questioner_voice: 'q-voice',
-  questioner_rate: '+0%',
-  questioner_say_username: true,
-  responder_enabled: true,
-  responder_voice: 'r-voice',
-  responder_rate: '+0%',
-  responder_delay_ms: 0,
-  output_device_id: '',
-}
 
 beforeAll(() => {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+  Object.defineProperty(window.HTMLMediaElement.prototype, 'setSinkId', {
+    configurable: true,
+    writable: true,
+    value: vi.fn(async () => {}),
+  })
+  vi.spyOn(window.HTMLMediaElement.prototype, 'play').mockImplementation(function (this: HTMLMediaElement) {
+    audioEls.push(this as HTMLAudioElement)
+    queueMicrotask(() => {
+      this.dispatchEvent(new Event('ended'))
+    })
+    return Promise.resolve() as any
+  })
+  vi.spyOn(window.HTMLMediaElement.prototype, 'pause').mockImplementation(function () {})
 })
 
 afterAll(() => {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false
+  vi.restoreAllMocks()
 })
 
 beforeEach(() => {
   generateMock.mockClear()
   generateMock.mockResolvedValue(new Blob(['audio'], { type: 'audio/mpeg' }))
-  ctx.state = 'suspended'
-  ctx.resume.mockClear()
+  audioEls.length = 0
+  ;(window.HTMLMediaElement.prototype.play as any).mockClear()
+  ;(window.HTMLMediaElement.prototype.pause as any).mockClear()
   Object.defineProperty(URL, 'createObjectURL', {
     configurable: true,
     value: vi.fn(() => 'blob:mock'),
@@ -93,7 +60,19 @@ afterEach(() => {
 })
 
 describe('useHowlerTTS autoplay retry', () => {
-  it('resumes the audio context and replays when the first play is blocked', async () => {
+  it('plays audio to completion via <audio> element', async () => {
+    const enabledSettings: TTSSettings = {
+      questioner_enabled: false,
+      questioner_voice: 'q-voice',
+      questioner_rate: '+0%',
+      questioner_say_username: true,
+      responder_enabled: true,
+      responder_voice: 'r-voice',
+      responder_rate: '+0%',
+      responder_delay_ms: 0,
+      output_device_id: '',
+    }
+
     const { result } = renderHook(() => useHowlerTTS(enabledSettings))
 
     act(() => {
@@ -107,7 +86,7 @@ describe('useHowlerTTS autoplay retry', () => {
 
     await waitFor(() => expect(result.current.isPlaying).toBe(false))
     expect(generateMock).toHaveBeenCalledTimes(1)
-    expect(playState.totalPlays).toBe(2)
-    expect(ctx.resume).toHaveBeenCalled()
+    // play() was called on the audio element
+    expect(audioEls.length).toBeGreaterThanOrEqual(1)
   })
 })

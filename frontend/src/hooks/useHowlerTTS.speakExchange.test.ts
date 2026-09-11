@@ -3,48 +3,37 @@ import { act } from 'react'
 import { renderHook, cleanup } from '@testing-library/react'
 import { useHowlerTTS, type TTSSettings } from './useHowlerTTS'
 
-// --- Mocks ---------------------------------------------------------------
-
 const { generateMock } = vi.hoisted(() => ({ generateMock: vi.fn() }))
 
-// Replace the network layer: TTS audio is "generated" locally instead of via the Django API.
 vi.mock('@/services/api', () => ({
   ttsApi: { generate: generateMock },
+  outputDeviceApi: {
+    getCurrent: vi.fn(async () => ({ device: null })),
+    capture: vi.fn(async () => ({})),
+  },
 }))
 
-// Replace Howler so playback completes instantly without a real audio context.
-vi.mock('howler', () => {
-  class Howl {
-    private events = new Map<string, Array<(...args: unknown[]) => void>>()
-
-    once(event: string, cb: (...args: unknown[]) => void) {
-      const list = this.events.get(event) ?? []
-      list.push(cb)
-      this.events.set(event, list)
-      return this
-    }
-
-    play() {
-      // Simulate a successful full playback that ends on the next microtask.
-      queueMicrotask(() => {
-        for (const cb of this.events.get('end') ?? []) cb(0)
-      })
-      return 0
-    }
-
-    stop() {
-      // Skip is not exercised in these tests.
-      return this
-    }
-  }
-
-  return {
-    Howl,
-    Howler: { ctx: null },
-  }
+beforeAll(() => {
+  ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+  Object.defineProperty(window.HTMLMediaElement.prototype, 'setSinkId', {
+    configurable: true,
+    writable: true,
+    value: vi.fn(async () => {}),
+  })
+  vi.spyOn(window.HTMLMediaElement.prototype, 'play').mockImplementation(function (this: HTMLMediaElement) {
+    // Simulate playback completing: fire 'ended' on next microtask
+    queueMicrotask(() => {
+      this.dispatchEvent(new Event('ended'))
+    })
+    return Promise.resolve() as any
+  })
+  vi.spyOn(window.HTMLMediaElement.prototype, 'pause').mockImplementation(function () {})
 })
 
-// --- Fixtures ------------------------------------------------------------
+afterAll(() => {
+  ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false
+  vi.restoreAllMocks()
+})
 
 const enabledSettings: TTSSettings = {
   questioner_enabled: true,
@@ -58,7 +47,6 @@ const enabledSettings: TTSSettings = {
   output_device_id: '',
 }
 
-/** Wait until `predicate` is true, letting pending microtasks/zero-delay timers run. */
 async function flush(predicate: () => boolean, timeoutMs = 3000) {
   const start = Date.now()
   while (!predicate()) {
@@ -90,15 +78,6 @@ function spokenTexts(): string[] {
   return generateMock.mock.calls.map((call) => call[0] as string)
 }
 
-beforeAll(() => {
-  // React 19 requires this flag for act() to flush async updates between awaits.
-  ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
-})
-
-afterAll(() => {
-  ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false
-})
-
 beforeEach(() => {
   generateMock.mockClear()
   generateMock.mockResolvedValue(new Blob(['audio'], { type: 'audio/mpeg' }))
@@ -116,8 +95,6 @@ afterEach(() => {
   cleanup()
   vi.clearAllMocks()
 })
-
-// --- Tests ---------------------------------------------------------------
 
 describe('useHowlerTTS.speakExchange — fake YouTube poll flow', () => {
   it('speaks questioner (name, then message) and later AI reply exactly once, in order', async () => {
@@ -169,7 +146,6 @@ describe('useHowlerTTS.speakExchange — fake YouTube poll flow', () => {
   it('serializes multiple viewers FIFO and dedupes each one across polls', async () => {
     const { result } = renderHook(() => useHowlerTTS(enabledSettings))
 
-    // Two viewer messages arrive in the same poll batch (no replies yet).
     act(() => {
       speak(result, { questioner_text: 'First msg', questioner_author: 'ViewerA', source_id: 'yt-a' })
       speak(result, { questioner_text: 'Second msg', questioner_author: 'ViewerB', source_id: 'yt-b' })
