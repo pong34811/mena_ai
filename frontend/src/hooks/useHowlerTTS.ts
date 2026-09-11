@@ -159,15 +159,25 @@ export function useHowlerTTS(initialSettings?: TTSSettings) {
 
   const loadSettings = useCallback(async () => {
     try {
-      const response = await fetch('/api/tts/settings/')
-      if (response.ok) {
-        const data = await response.json()
-        setState((prev) => ({ ...prev, settings: data }))
-        settingsRef.current = data
-        if (data.output_device_id) {
-          // Defer so AudioContext is ready after first user gesture
-          setTimeout(() => applyOutputDevice(data.output_device_id), 0)
+      const [settingsResponse, currentResponse] = await Promise.all([
+        fetch('/api/tts/settings/'),
+        fetch('/api/output-devices/current/'),
+      ])
+      const data = settingsResponse.ok ? await settingsResponse.json() : null
+      if (!data) return
+      if (currentResponse.ok) {
+        const { device } = await currentResponse.json()
+        if (device?.device_id) {
+          // Source of truth moved to the output_devices app; the settings
+          // field is kept as a deprecated fallback.
+          data.output_device_id = device.device_id
         }
+      }
+      setState((prev) => ({ ...prev, settings: data }))
+      settingsRef.current = data
+      if (data.output_device_id) {
+        // Defer so AudioContext is ready after first user gesture
+        setTimeout(() => applyOutputDevice(data.output_device_id), 0)
       }
     } catch (err) {
       console.error('Failed to load TTS settings:', err)
