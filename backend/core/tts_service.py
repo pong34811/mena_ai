@@ -1,47 +1,93 @@
 """
-TTS Service - Text-to-Speech using edge-tts (free, high-quality, Thai support).
+TTS Service - Local Piper TTS (no rate limits).
 
 Provides:
-- Text-to-speech conversion with multiple voice options
-- Audio file generation and caching
-- Support for Thai, English, Japanese and other languages
+- Text-to-speech conversion via a local Piper sidecar (HTTP)
+- Audio file generation and caching (MP3, unchanged)
+- Thai voice only (th_TH-tsync2-medium); legacy voice ids aliased
 """
 
-import os
-import asyncio
 import hashlib
 import logging
+import os
 import re
+import threading
+import time
 from pathlib import Path
 from typing import Optional
 
-import edge_tts
+import requests
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-# Voice options by language (verified available voices)
+# Piper sidecar base URL. Read from env (compose sets http://piper:8888).
+PIPER_TTS_URL = os.getenv("PIPER_TTS_URL", "http://localhost:8888")
+PIPER_TTS_TIMEOUT = 15
+
+# Cap concurrent synthesis (piper is CPU-bound locally; protects the host).
+_tts_semaphore = threading.Semaphore(2)
+
+# Emoji regex: matches most emoji including compound sequences
+_EMOJI_RE = re.compile(
+    "["
+    "\U0001F600-\U0001F64F"  # emoticons
+    "\U0001F300-\U0001F5FF"  # symbols & pictographs
+    "\U0001F680-\U0001F6FF"  # transport & map
+    "\U0001F1E0-\U0001F1FF"  # flags
+    "\U00002702-\U000027B0"
+    "\U000024C2-\U0001F251"
+    "\U0001f926-\U0001f937"
+    "\U00010000-\U0010ffff"
+    "\u200d"
+    "\ufe0f"
+    "]+",
+    flags=re.UNICODE,
+)
+
+
+def _strip_emojis(text: str) -> str:
+    """Remove emojis that TTS cannot synthesize."""
+    return _EMOJI_RE.sub("", text).strip()
+
+
+# Thai voice only (local Piper). Quality "medium", robotic vs Azure — user-approved.
 VOICE_OPTIONS = {
     'thai': [
-        {'id': 'th-TH-PremwadeeNeural', 'name': 'Thai Female (Premwadee)', 'gender': 'Female'},
-        {'id': 'th-TH-NiwatNeural', 'name': 'Thai Male (Niwat)', 'gender': 'Male'},
-    ],
-    'english': [
-        {'id': 'en-US-AriaNeural', 'name': 'US Aria (Female)', 'gender': 'Female'},
-        {'id': 'en-US-GuyNeural', 'name': 'US Guy (Male)', 'gender': 'Male'},
-        {'id': 'en-US-JennyNeural', 'name': 'US Jenny (Female)', 'gender': 'Female'},
-        {'id': 'en-US-MichelleNeural', 'name': 'US Michelle (Female)', 'gender': 'Female'},
-        {'id': 'en-GB-SoniaNeural', 'name': 'UK Sonia (Female)', 'gender': 'Female'},
-        {'id': 'en-GB-RyanNeural', 'name': 'UK Ryan (Male)', 'gender': 'Male'},
-    ],
-    'japanese': [
-        {'id': 'ja-JP-NanamiNeural', 'name': 'JP Nanami (Female)', 'gender': 'Female'},
-        {'id': 'ja-JP-KeitaNeural', 'name': 'JP Keita (Male)', 'gender': 'Male'},
+        {'id': 'th_TH-tsync2-medium', 'name': 'Thai Female (tsync2)', 'gender': 'Female'},
     ],
 }
 
-# Default voice
-DEFAULT_VOICE = 'th-TH-PremwadeeNeural'
+DEFAULT_VOICE = 'th_TH-tsync2-medium'
+
+# Map every legacy edge-tts voice id used anywhere in the repo to the piper voice,
+# so stored DB values and old frontend values keep working.
+VOICE_ALIAS_MAP = {
+    'th-TH-PremwadeeNeural': DEFAULT_VOICE,
+    'th-TH-NiwatNeural': DEFAULT_VOICE,
+    'en-US-AriaNeural': DEFAULT_VOICE,
+    'en-US-GuyNeural': DEFAULT_VOICE,
+    'en-US-JennyNeural': DEFAULT_VOICE,
+    'en-US-MichelleNeural': DEFAULT_VOICE,
+    'en-GB-SoniaNeural': DEFAULT_VOICE,
+    'en-GB-RyanNeural': DEFAULT_VOICE,
+    'ja-JP-NanamiNeural': DEFAULT_VOICE,
+    'ja-JP-KeitaNeural': DEFAULT_VOICE,
+}
+
+_VALID_VOICES = {v['id'] for voices in VOICE_OPTIONS.values() for v in voices}
+
+
+def resolve_voice(voice: str) -> str:
+    """Resolve any stored voice id to a valid piper id (alias -> default)."""
+    if not voice:
+        return DEFAULT_VOICE
+    resolved = VOICE_ALIAS_MAP.get(voice, voice)
+    if resolved not in _VALID_VOICES:
+        logger.warning("Unknown TTS voice %r, using default", voice)
+        return DEFAULT_VOICE
+    return resolved
+
 
 # Cache directory for audio files
 CACHE_DIR = Path(getattr(settings, 'BASE_DIR', Path(__file__).resolve().parent.parent)) / 'tts_cache'
@@ -52,11 +98,10 @@ MAX_CACHE_SIZE = 100
 
 
 def normalize_rate(rate: str) -> str:
-    """Normalize a speech rate into edge-tts format (e.g. '+10%', '-5%').
+    """Normalize a speech rate into '%' format (e.g. '+10%', '-5%').
 
-    Accepts edge-tts format directly, or a speed multiplier like '1.0'/'1.1'
-    (sent by older frontend defaults) which is converted to a percentage.
-    Falls back to '+0%' for anything unparseable.
+    Accepts '%' format directly, or a speed multiplier like '1.0'/'1.1'
+    (sent by older frontend defaults). Falls back to '+0%' for anything unparseable.
     """
     if not rate:
         return '+0%'
@@ -68,8 +113,17 @@ def normalize_rate(rate: str) -> str:
         pct = round((mult - 1) * 100)
         return f'+{pct}%' if pct >= 0 else f'{pct}%'
     except (ValueError, TypeError):
-        logger.warning(f"Unparseable TTS rate {rate!r}, falling back to '+0%'")
+        logger.warning("Unparseable TTS rate %r, falling back to '+0%'", rate)
         return '+0%'
+
+
+def rate_to_length_scale(rate: str) -> float:
+    """Convert an edge-style rate (+X%) to a piper length_scale.
+
+    length_scale = 100 / (100 + pct): +50% speed -> 0.667, -20% -> 1.25.
+    """
+    pct = int(normalize_rate(rate).rstrip('%'))
+    return 100.0 / (100.0 + pct)
 
 
 def get_cache_path(text: str, voice: str, rate: str = '+0%') -> Path:
@@ -89,100 +143,84 @@ def cleanup_cache():
             pass
 
 
+def call_piper_synthesize(text: str, voice: str, length_scale: float) -> Optional[bytes]:
+    """POST text to the piper sidecar; returns MP3 bytes or None on any failure."""
+    try:
+        resp = requests.post(
+            f"{PIPER_TTS_URL}/v1/tts",
+            json={'text': text, 'voice': voice, 'length_scale': length_scale},
+            timeout=PIPER_TTS_TIMEOUT,
+        )
+        if resp.status_code != 200:
+            logger.error("Piper returned %s: %s", resp.status_code, resp.text[:200])
+            return None
+        return resp.content
+    except requests.RequestException as e:
+        logger.error("Piper request failed: %s", e)
+        return None
+
+
 class TTSService:
-    """Text-to-Speech service using edge-tts."""
-    
+    """Text-to-Speech service calling a local Piper sidecar."""
+
     def __init__(self, voice: str = DEFAULT_VOICE, rate: str = "+0%"):
-        """
-        Initialize TTS service.
+        """Initialize TTS service.
 
         Args:
-            voice: Voice ID (e.g., 'th-TH-PremwadeeNeural')
-            rate: Speech rate adjustment (e.g., '+10%', '-10%').
-                Speed multipliers like '1.0' are normalized automatically.
+            voice: Voice ID (any legacy edge id is aliased to the piper voice)
+            rate: Speech rate ('+10%', '-10%', or multiplier). Piper length_scale conversion.
         """
         self.voice = voice
         self.rate = normalize_rate(rate)
-    
-    async def _generate_async(self, text: str, output_path: Path) -> bool:
-        """Generate audio file asynchronously."""
-        try:
-            communicate = edge_tts.Communicate(text, self.voice, rate=self.rate)
-            await communicate.save(str(output_path))
-            return True
-        except Exception as e:
-            logger.error(f"TTS generation failed: {e}")
-            return False
-    
+
     def generate(self, text: str, use_cache: bool = True) -> Optional[Path]:
-        """
-        Generate audio file from text.
-        
+        """Generate an MP3 file from text via the piper sidecar.
+
         Args:
             text: Text to convert to speech
             use_cache: Whether to use cached audio if available
-            
+
         Returns:
             Path to generated audio file, or None if failed
         """
         if not text or not text.strip():
             return None
-        
-        # Truncate very long text (edge-tts limit + VTuber style = short)
-        # 300 chars ≈ 4-5 sentences, keeps TTS fast (3-8s) while sounding complete
+
+        # Strip emojis, truncate long text (kept from edge-tts behaviour, still good for TTS)
+        text = _strip_emojis(text)
+        if not text:
+            return None
         if len(text) > 300:
             text = text[:300]
-        
-        cache_path = get_cache_path(text, self.voice, self.rate)
-        
-        # Return cached file if exists
+
+        voice = resolve_voice(self.voice)
+        length_scale = rate_to_length_scale(self.rate)
+        cache_path = get_cache_path(text, voice, self.rate)
+
         if use_cache and cache_path.exists():
-            logger.debug(f"TTS cache hit: {cache_path.name}")
+            logger.debug("TTS cache hit: %s", cache_path.name)
             return cache_path
-        
-        # Generate new audio via subprocess (avoids Daphne event loop issues)
+
+        # Synthesize via the local piper sidecar. Serialize with the semaphore so
+        # CPU-bound synthesis is capped. Retry once on transient connectivity.
+        acquired = _tts_semaphore.acquire(timeout=60)
         try:
-            import subprocess
-            import sys
-            import tempfile
-            # Write a temp script to avoid shell escaping issues
-            script = '''import asyncio, edge_tts, sys
-text, voice, rate, path = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-asyncio.run(edge_tts.Communicate(text, voice, rate=rate).save(path))
-'''
-            with tempfile.NamedTemporaryFile(suffix='.py', mode='w', delete=False, encoding='utf-8') as tmp:
-                tmp.write(script)
-                tmp_path = tmp.name
-            result = subprocess.run(
-                [sys.executable, tmp_path, text, self.voice, self.rate, str(cache_path)],
-                capture_output=True, timeout=30
-            )
-            import os
-            os.unlink(tmp_path)
-            success = result.returncode == 0
-            if not success:
-                logger.error(f"TTS subprocess failed: {result.stderr.decode('utf-8', 'replace')[:300]}")
-        except Exception as e:
-            logger.error(f"TTS generation error: {e}")
+            for attempt in range(2):
+                audio = call_piper_synthesize(text, voice, length_scale)
+                if audio:
+                    cache_path.write_bytes(audio)
+                    cleanup_cache()
+                    return cache_path
+                if attempt == 0:
+                    time.sleep(0.5)
+            logger.error("TTS generation failed after 2 attempts (voice=%s)", voice)
             return None
-        
-        if success:
-            cleanup_cache()
-            return cache_path
-        
-        return None
-    
+        finally:
+            if acquired:
+                _tts_semaphore.release()
+
     def get_audio_bytes(self, text: str, use_cache: bool = True) -> Optional[bytes]:
-        """
-        Get audio bytes from text.
-        
-        Args:
-            text: Text to convert to speech
-            use_cache: Whether to use cached audio if available
-            
-        Returns:
-            Audio file bytes, or None if failed
-        """
+        """Get audio bytes from text."""
         cache_path = self.generate(text, use_cache)
         if cache_path and cache_path.exists():
             return cache_path.read_bytes()
@@ -195,7 +233,6 @@ def get_voices_for_language(language: str) -> list[dict]:
     for key, voices in VOICE_OPTIONS.items():
         if key in lang or lang in key:
             return voices
-    # Return all voices if no match
     all_voices = []
     for voices in VOICE_OPTIONS.values():
         all_voices.extend(voices)

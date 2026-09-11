@@ -8,7 +8,7 @@ channels-redis>=4.0
 psycopg2-binary>=2.9
 websockets>=17.0
 pytchat>=0.5.5
-edge-tts>=7.0
+
 dj-database-url>=2.0
 watchfiles>=0.21
 whitenoise>=6.0
