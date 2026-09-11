@@ -18,7 +18,7 @@ class TTSSettings(models.Model):
     )
     questioner_voice = models.CharField(
         max_length=100,
-        default='th-TH-PremwadeeNeural',
+        default='th_TH-tsync2-medium',
         help_text="เสียง TTS สำหรับผู้ถาม"
     )
     questioner_rate = models.CharField(
@@ -38,7 +38,7 @@ class TTSSettings(models.Model):
     )
     responder_voice = models.CharField(
         max_length=100,
-        default='th-TH-PremwadeeNeural',
+        default='th_TH-tsync2-medium',
         help_text="เสียง TTS สำหรับผู้ตอบ"
     )
     responder_rate = models.CharField(

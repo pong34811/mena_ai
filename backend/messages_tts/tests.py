@@ -17,11 +17,11 @@ class TestTTSSettingsModel:
         settings = TTSSettings.get_instance()
         assert settings.pk == TTSSettings.SINGLETON_PK
         assert settings.questioner_enabled is True
-        assert settings.questioner_voice == "th-TH-PremwadeeNeural"
+        assert settings.questioner_voice == "th_TH-tsync2-medium"
         assert settings.questioner_rate == "+0%"
         assert settings.questioner_say_username is True
         assert settings.responder_enabled is True
-        assert settings.responder_voice == "th-TH-PremwadeeNeural"
+        assert settings.responder_voice == "th_TH-tsync2-medium"
         assert settings.responder_rate == "+0%"
         assert settings.responder_delay_ms == 1000
 
@@ -91,7 +91,7 @@ class TestTTSSettingsGetView:
         response = tts_settings_get(request)
         assert response.status_code == status.HTTP_200_OK
         assert response.data["questioner_enabled"] is True
-        assert response.data["questioner_voice"] == "th-TH-PremwadeeNeural"
+        assert response.data["questioner_voice"] == "th_TH-tsync2-medium"
         assert response.data["responder_enabled"] is True
         assert response.data["responder_delay_ms"] == 1000
 
