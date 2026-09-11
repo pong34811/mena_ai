@@ -31,6 +31,14 @@ const RATE_PRESETS = [
   '-30%', '-20%', '-10%', '-5%', '+0%', '+5%', '+10%', '+20%', '+30%',
 ]
 
+function detectPlatform(): string {
+  const ua = navigator.userAgent.toLowerCase()
+  if (ua.includes('windows')) return 'windows'
+  if (ua.includes('mac') || ua.includes('ios')) return 'macos'
+  if (ua.includes('linux')) return 'linux'
+  return 'other'
+}
+
 function RateSelector({
   value,
   onChange,
@@ -137,6 +145,18 @@ export default function TTSSettingsPage() {
       ])
       if (settingsRes.ok) {
         const data = await settingsRes.json()
+        // Prefer the device recorded in the output_devices app (last selection)
+        try {
+          const currentRes = await fetch('/api/output-devices/current/')
+          if (currentRes.ok) {
+            const { device } = await currentRes.json()
+            if (device?.device_id) {
+              data.output_device_id = device.device_id
+            }
+          }
+        } catch (err) {
+          console.error('Failed to load current output device:', err)
+        }
         setSettings(data)
       }
       if (voicesRes.voices) {
@@ -164,6 +184,20 @@ export default function TTSSettingsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(settings),
       })
+      // Persist the selected device in the output_devices app (catalog + history)
+      const deviceId = settings.output_device_id
+      if (deviceId) {
+        const known = audioDevices.find((d) => d.deviceId === deviceId)
+        await fetch('/api/output-devices/capture/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            device_id: deviceId,
+            label: known?.label || deviceId,
+            platform: detectPlatform(),
+          }),
+        })
+      }
       // Broadcast saved event so ChatPage can reload
       window.dispatchEvent(new CustomEvent('tts-settings-saved'))
       if (response.ok) {
