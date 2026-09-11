@@ -65,6 +65,9 @@ class TestRateToLengthScale:
     def test_multiplier_input(self):
         assert rate_to_length_scale("1.5") == pytest.approx(100 / 150)
 
+    def test_minus_100_clamps_not_divzero(self):
+        assert rate_to_length_scale("-100%") == 100.0
+
 
 class TestCallPiperSynthesize:
     def test_success_returns_bytes(self, monkeypatch):

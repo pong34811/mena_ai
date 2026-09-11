@@ -121,9 +121,11 @@ def rate_to_length_scale(rate: str) -> float:
     """Convert an edge-style rate (+X%) to a piper length_scale.
 
     length_scale = 100 / (100 + pct): +50% speed -> 0.667, -20% -> 1.25.
+    A rate of -100% (denominator 0) clamps to an extreme slowdown instead of
+    dividing by zero.
     """
     pct = int(normalize_rate(rate).rstrip('%'))
-    return 100.0 / (100.0 + pct)
+    return 100.0 / max(1, 100.0 + pct)
 
 
 def get_cache_path(text: str, voice: str, rate: str = '+0%') -> Path:
@@ -203,6 +205,8 @@ class TTSService:
 
         # Synthesize via the local piper sidecar. Serialize with the semaphore so
         # CPU-bound synthesis is capped. Retry once on transient connectivity.
+        # acquire(timeout=60) fails open: under sustained overload we prefer a
+        # long wait over dropping the request, at slight CPU overshoot.
         acquired = _tts_semaphore.acquire(timeout=60)
         try:
             for attempt in range(2):

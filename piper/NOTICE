@@ -1,0 +1,19 @@
+Piper TTS sidecar — Third-party notices
+=======================================
+
+Voice model
+-----------
+th_TH-tsync2-medium.onnx (+ .onnx.json)
+  Provider : rhasspy/piper-voices (HuggingFace)
+  Model    : Coqui TTS Thai voice (tsync2, medium)
+  License  : CC BY-NC-SA 4.0 (non-commercial)
+             https://creativecommons.org/licenses/by-nc-sa/4.0/
+  Credit   : Coqui AI (https://github.com/rhasspy/piper-voices)
+
+This project uses the model under the CC BY-NC-SA license terms. The model is
+not redistributed by this repository; it is downloaded at image build time from
+the upstream HuggingFace repository above.
+
+piper-tts
+---------
+License  : MIT (https://github.com/rhasspy/piper)

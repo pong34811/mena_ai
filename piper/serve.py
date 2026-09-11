@@ -11,6 +11,7 @@ import logging
 import subprocess
 import threading
 import wave
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response
@@ -23,7 +24,14 @@ logger = logging.getLogger("piper-sidecar")
 VOICES_DIR = "/models"
 DEFAULT_VOICE = "th_TH-tsync2-medium"
 
-app = FastAPI(title="Piper TTS sidecar", version="1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    _load_piper()
+    yield
+
+
+app = FastAPI(title="Piper TTS sidecar", version="1.0", lifespan=lifespan)
 
 _piper = None
 _lock = threading.Lock()
@@ -57,8 +65,11 @@ def _wav_bytes(text: str, length_scale: float, noise_scale: float, noise_w: floa
     )
     sample_rate = voice.config.sample_rate
     pcm = bytearray()
-    for chunk in voice.synthesize(text, config):
-        pcm += chunk.audio_int16_bytes
+    # Serialize onnxruntime inference (piper is single-model, CPU-heavy).
+    # Voice loading is done above the lock, so no re-entrant deadlock.
+    with _lock:
+        for chunk in voice.synthesize(text, config):
+            pcm += chunk.audio_int16_bytes
 
     buf = io.BytesIO()
     with wave.open(buf, "wb") as wf:
@@ -86,20 +97,19 @@ def _to_mp3(wav: bytes) -> bytes:
     return proc.stdout
 
 
-@app.on_event("startup")
-async def _startup():
-    _load_piper()
-
-
 @app.get("/healthz")
 async def healthz():
     return {"status": "ok", "voice": DEFAULT_VOICE}
 
 
+# Plain `def` (not async) so FastAPI runs synthesis in a worker thread and the
+# event loop stays responsive (healthz included) while a request is synthesizing.
 @app.post("/v1/tts")
-async def synthesize(req: TTSRequest):
+def synthesize(req: TTSRequest):
     if not req.text.strip():
         raise HTTPException(status_code=400, detail="text is required")
+    if req.voice != DEFAULT_VOICE:
+        raise HTTPException(status_code=400, detail=f"only voice {DEFAULT_VOICE!r} is supported")
     try:
         wav = _wav_bytes(req.text, req.length_scale, req.noise_scale, req.noise_w)
         mp3 = _to_mp3(wav)

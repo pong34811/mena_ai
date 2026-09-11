@@ -1,7 +1,7 @@
 """
 TTS API views for AI VTuber system.
 
-Provides endpoints for text-to-speech conversion with edge-tts.
+Provides endpoints for text-to-speech conversion with the local Piper sidecar.
 """
 
 import logging
@@ -26,7 +26,7 @@ def tts_generate(request: Request) -> Response:
     
     Request body:
         - text: Text to convert to speech (required)
-        - voice: Voice ID (optional, default: th-TH-PremwadeeNeural)
+        - voice: Voice ID (optional, default: th_TH-tsync2-medium)
         - rate: Speech rate adjustment (optional, default: +0%)
         - format: Response format - 'file' or 'json' (optional, default: file)
     
