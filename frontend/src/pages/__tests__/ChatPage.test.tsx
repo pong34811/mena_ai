@@ -30,8 +30,8 @@ const mockTts = vi.hoisted(() => ({
   settings: {
     questioner_enabled: true,
     responder_enabled: true,
-    questioner_voice: 'th-TH-PremwadeeNeural',
-    responder_voice: 'th-TH-PremwadeeNeural',
+    questioner_voice: 'th_TH-tsync2-medium',
+    responder_voice: 'th_TH-tsync2-medium',
   },
   speakExchange: vi.fn(),
   currentItem: null,

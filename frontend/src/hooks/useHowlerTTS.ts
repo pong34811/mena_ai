@@ -55,11 +55,11 @@ interface HowlerTTSState {
 
 const defaultSettings: TTSSettings = {
   questioner_enabled: false,
-  questioner_voice: 'th-TH-PremwadeeNeural',
+  questioner_voice: 'th_TH-tsync2-medium',
   questioner_rate: '+0%',
   questioner_say_username: true,
   responder_enabled: false,
-  responder_voice: 'th-TH-PremwadeeNeural',
+  responder_voice: 'th_TH-tsync2-medium',
   responder_rate: '+0%',
   responder_delay_ms: 1000,
   output_device_id: '',

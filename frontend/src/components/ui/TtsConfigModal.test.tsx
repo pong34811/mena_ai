@@ -4,10 +4,9 @@ import { TtsConfigModal } from './TtsConfigModal'
 
 const mockVoices = {
   voices: {
-    thai: [{ id: 'th-TH-PremwadeeNeural', name: 'Premwadee', gender: 'Female' }],
-    english: [{ id: 'en-US-AriaNeural', name: 'Aria', gender: 'Female' }],
+    thai: [{ id: 'th_TH-tsync2-medium', name: 'Thai Female (tsync2)', gender: 'Female' }],
   },
-  default_voice: 'th-TH-PremwadeeNeural',
+  default_voice: 'th_TH-tsync2-medium',
 }
 
 describe('TtsConfigModal', () => {
@@ -16,11 +15,11 @@ describe('TtsConfigModal', () => {
     onClose: vi.fn(),
     userTtsEnabled: true,
     setUserTtsEnabled: vi.fn(),
-    userTtsVoice: 'th-TH-PremwadeeNeural',
+    userTtsVoice: 'th_TH-tsync2-medium',
     setUserTtsVoice: vi.fn(),
     aiTtsEnabled: true,
     setAiTtsEnabled: vi.fn(),
-    aiTtsVoice: 'en-US-AriaNeural',
+    aiTtsVoice: 'th_TH-tsync2-medium',
     setAiTtsVoice: vi.fn(),
   }
 
@@ -98,8 +97,8 @@ describe('TtsConfigModal', () => {
       expect(selects).toHaveLength(2)
     })
     const selects = screen.getAllByRole('combobox')
-    fireEvent.change(selects[0], { target: { value: 'en-US-AriaNeural' } })
-    expect(defaultProps.setUserTtsVoice).toHaveBeenCalledWith('en-US-AriaNeural')
+    fireEvent.change(selects[0], { target: { value: 'th_TH-tsync2-medium' } })
+    expect(defaultProps.setUserTtsVoice).toHaveBeenCalledWith('th_TH-tsync2-medium')
   })
 
   it('calls setAiTtsVoice when AI voice is changed', async () => {
@@ -109,8 +108,8 @@ describe('TtsConfigModal', () => {
       expect(selects).toHaveLength(2)
     })
     const selects = screen.getAllByRole('combobox')
-    fireEvent.change(selects[1], { target: { value: 'th-TH-PremwadeeNeural' } })
-    expect(defaultProps.setAiTtsVoice).toHaveBeenCalledWith('th-TH-PremwadeeNeural')
+    fireEvent.change(selects[1], { target: { value: 'th_TH-tsync2-medium' } })
+    expect(defaultProps.setAiTtsVoice).toHaveBeenCalledWith('th_TH-tsync2-medium')
   })
 
   it('handles API error gracefully', async () => {

@@ -762,11 +762,11 @@ export default function ChatPage() {
         onClose={() => setShowTtsModal(false)}
         userTtsEnabled={tts.settings?.questioner_enabled ?? false}
         setUserTtsEnabled={(v) => updateTts({ questioner_enabled: v })}
-        userTtsVoice={tts.settings?.questioner_voice ?? 'th-TH-PremwadeeNeural'}
+        userTtsVoice={tts.settings?.questioner_voice ?? 'th_TH-tsync2-medium'}
         setUserTtsVoice={(v) => updateTts({ questioner_voice: v })}
         aiTtsEnabled={tts.settings?.responder_enabled ?? false}
         setAiTtsEnabled={(v) => updateTts({ responder_enabled: v })}
-        aiTtsVoice={tts.settings?.responder_voice ?? 'th-TH-PremwadeeNeural'}
+        aiTtsVoice={tts.settings?.responder_voice ?? 'th_TH-tsync2-medium'}
         setAiTtsVoice={(v) => updateTts({ responder_voice: v })}
       />
     </div>

@@ -140,7 +140,7 @@ export const ttsApi = {
     console.log('[TTS] generate called:', { text: text.slice(0, 50), voice, rate })
     const { data } = await api.post('/tts/generate/', {
       text,
-      voice: voice || 'th-TH-PremwadeeNeural',
+      voice: voice || 'th_TH-tsync2-medium',
       rate: rate || '+0%',
     }, {
       responseType: 'blob',

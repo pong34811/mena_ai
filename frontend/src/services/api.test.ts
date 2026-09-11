@@ -219,6 +219,17 @@ describe('ttsApi', () => {
     expect(result).toEqual(mockBlob)
   })
 
+  it('generate defaults to piper th_TH-tsync2-medium voice', async () => {
+    const mockBlob = new Blob(['audio'], { type: 'audio/mpeg' })
+    mockedAxios.post.mockResolvedValueOnce({ data: mockBlob })
+    await ttsApi.generate('Hello')
+    expect(mockedAxios.post).toHaveBeenCalledWith(
+      '/tts/generate/',
+      { text: 'Hello', voice: 'th_TH-tsync2-medium', rate: '+0%' },
+      { responseType: 'blob' }
+    )
+  })
+
   it('getVoices returns voices', async () => {
     const mockVoices = {
       voices: { thai: [{ id: 'th-1', name: 'Thai Voice' }] },
