@@ -52,6 +52,10 @@ async function mockBackend(page: Page) {
     })
   );
 
+  await page.route('**/api/output-devices/current/', (route) =>
+    route.fulfill({ json: { device: { device_id: '' } } })
+  );
+
   await page.route('**/api/yt-chat/status/', (route) =>
     route.fulfill({ json: { active: false } })
   );
