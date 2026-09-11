@@ -18,6 +18,8 @@ class CharacterAdmin(admin.ModelAdmin):
     list_filter = ['is_active', 'response_language', 'response_length', 'created_at']
     search_fields = ['name', 'name_th', 'name_en', 'description', 'system_prompt']
     readonly_fields = ['id', 'created_at', 'updated_at']
+    date_hierarchy = 'created_at'
+    list_per_page = 50
 
     fieldsets = (
         ('Basic Info', {

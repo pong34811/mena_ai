@@ -61,6 +61,7 @@ const enabledSettings: TTSSettings = {
   responder_voice: 'r-voice',
   responder_rate: '+0%',
   responder_delay_ms: 0,
+  output_device_id: '',
 }
 
 beforeAll(() => {

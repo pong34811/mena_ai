@@ -2,18 +2,35 @@
 Admin registration for providers models.
 """
 
+from django import forms
 from django.contrib import admin
 
 from .models import LLMProvider
 
 
+class LLMProviderAdminForm(forms.ModelForm):
+    """Mask the API key field in the admin form."""
+
+    class Meta:
+        model = LLMProvider
+        fields = '__all__'
+        widgets = {
+            'api_key': forms.PasswordInput(render_value=True),
+        }
+
+
 class LLMProviderAdmin(admin.ModelAdmin):
     """Admin for LLM provider configurations."""
+
+    form = LLMProviderAdminForm
 
     list_display = ['name', 'model_name', 'api_url', 'temperature', 'max_tokens', 'is_active', 'updated_at']
     list_filter = ['is_active', 'model_name', 'created_at']
     search_fields = ['name', 'api_url', 'model_name']
     readonly_fields = ['id', 'created_at', 'updated_at']
+    date_hierarchy = 'created_at'
+    ordering = ['name']
+    list_per_page = 50
 
     fieldsets = (
         ('Basic Info', {

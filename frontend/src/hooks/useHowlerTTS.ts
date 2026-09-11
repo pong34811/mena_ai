@@ -20,6 +20,7 @@ export interface TTSSettings {
   responder_voice: string
   responder_rate: string
   responder_delay_ms: number
+  output_device_id: string
 }
 
 export interface TTSQueueItem {
@@ -61,6 +62,7 @@ const defaultSettings: TTSSettings = {
   responder_voice: 'th-TH-PremwadeeNeural',
   responder_rate: '+0%',
   responder_delay_ms: 1000,
+  output_device_id: '',
 }
 
 export function useHowlerTTS(initialSettings?: TTSSettings) {
@@ -76,6 +78,7 @@ export function useHowlerTTS(initialSettings?: TTSSettings) {
   const currentItemRef = useRef<TTSQueueItem | null>(state.currentItem)
   currentItemRef.current = state.currentItem
   const activeHowlRef = useRef<Howl | null>(null)
+  const appliedSinkRef = useRef<string>('')
 
   // Resume the shared Howler audio context on the user's first interaction so
   // autoplay policies don't silently block TTS (chat + YouTube auto-reply).
@@ -112,19 +115,6 @@ export function useHowlerTTS(initialSettings?: TTSSettings) {
     }
   }, [initialSettings])
 
-  const loadSettings = useCallback(async () => {
-    try {
-      const response = await fetch('/api/tts/settings/')
-      if (response.ok) {
-        const data = await response.json()
-        setState((prev) => ({ ...prev, settings: data }))
-        settingsRef.current = data
-      }
-    } catch (err) {
-      console.error('Failed to load TTS settings:', err)
-    }
-  }, [])
-
   const cancelPause = useCallback(() => {
     if (pauseTimerRef.current !== null) {
       clearTimeout(pauseTimerRef.current)
@@ -133,6 +123,62 @@ export function useHowlerTTS(initialSettings?: TTSSettings) {
     pauseResolveRef.current?.()
     pauseResolveRef.current = null
   }, [])
+
+  // Force Howler to create its shared AudioContext. Howler initializes it
+  // lazily on the first `new Howl()` / `Howler.volume()` call, so a plain
+  // read of `Howler.ctx` is still null on mount — which previously made
+  // setSinkId silently no-op and left chat TTS routed to the default device.
+  const ensureAudioContext = useCallback(() => {
+    if (!Howler.ctx && typeof Howler.volume === 'function') {
+      Howler.volume(Howler.volume())
+    }
+    return Howler.ctx as (AudioContext & { setSinkId?: (id: string) => Promise<void> }) | null
+  }, [])
+
+  // Route TTS audio to a specific output device (e.g. VB-Audio Virtual Cable).
+  // Only supported in Chromium browsers via Web Audio API's setSinkId.
+  const applyOutputDevice = useCallback(async (deviceId: string) => {
+    const ctx = ensureAudioContext()
+    if (!ctx) return
+
+    if (typeof ctx.setSinkId !== 'function') {
+      console.warn('[TTS] setSinkId not supported — output device routing unavailable')
+      return
+    }
+
+    if (appliedSinkRef.current === deviceId) return
+
+    try {
+      await ctx.setSinkId(deviceId)
+      appliedSinkRef.current = deviceId
+      console.info(`[TTS] Output device set to: ${deviceId || 'default'}`)
+    } catch (err) {
+      console.error('[TTS] Failed to set output device:', err)
+    }
+  }, [ensureAudioContext])
+
+  const loadSettings = useCallback(async () => {
+    try {
+      const response = await fetch('/api/tts/settings/')
+      if (response.ok) {
+        const data = await response.json()
+        setState((prev) => ({ ...prev, settings: data }))
+        settingsRef.current = data
+        if (data.output_device_id) {
+          // Defer so AudioContext is ready after first user gesture
+          setTimeout(() => applyOutputDevice(data.output_device_id), 0)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load TTS settings:', err)
+    }
+  }, [applyOutputDevice])
+
+  // Whether the browser supports choosing an output device for Web Audio.
+  const supportsOutputRouting = useCallback(() => {
+    const ctx = ensureAudioContext()
+    return !!ctx && typeof ctx.setSinkId === 'function'
+  }, [ensureAudioContext])
 
   const stopActive = useCallback(() => {
     cancelPause()
@@ -143,6 +189,14 @@ export function useHowlerTTS(initialSettings?: TTSSettings) {
   // Play a single piece of audio, resolving when it finishes (or is stopped)
   const playSubItem = useCallback(async (text: string, voice: string, rate: string) => {
     try {
+      // Re-apply the output device before playback. The first Howl in a
+      // session is what actually creates Howler's AudioContext, so this is the
+      // last safe place to route it before any audio starts.
+      const deviceId = settingsRef.current?.output_device_id
+      if (deviceId) {
+        await applyOutputDevice(deviceId)
+      }
+
       const blob = await ttsApi.generate(text, voice, rate)
       if (!blob) return
 
@@ -188,7 +242,7 @@ export function useHowlerTTS(initialSettings?: TTSSettings) {
     } catch (err) {
       console.error('Sub-item TTS error:', err)
     }
-  }, [stopActive])
+  }, [stopActive, applyOutputDevice])
 
   // Register the active item synchronously (not just via state, which only
   // commits on re-render) so queue guards never read a stale item mid-flow.
@@ -321,10 +375,16 @@ export function useHowlerTTS(initialSettings?: TTSSettings) {
   // Call from a user gesture (e.g. enabling TTS) to satisfy autoplay policies.
   const unlockAudio = useCallback(async () => {
     try {
-      const ctx = Howler.ctx as AudioContext | null
+      const ctx = ensureAudioContext() as AudioContext | null
       if (!ctx) return
       if (ctx.state === 'suspended') {
         await ctx.resume()
+      }
+      // Apply output device BEFORE any audio flows through the context, so the
+      // silent buffer and subsequent TTS route to the chosen device.
+      const deviceId = settingsRef.current?.output_device_id
+      if (deviceId) {
+        await applyOutputDevice(deviceId)
       }
       // Play a silent buffer so the context starts outputting immediately
       const buffer = ctx.createBuffer(1, 1, 22050)
@@ -336,7 +396,24 @@ export function useHowlerTTS(initialSettings?: TTSSettings) {
       // AudioContext unavailable or resume rejected — audio will unlock on the next user gesture
       console.error('Audio unlock failed:', err)
     }
-  }, [])
+  }, [applyOutputDevice, ensureAudioContext])
+
+  // Listen for settings changes so output device updates immediately
+  // when the user saves TTS settings on the settings page.
+  useEffect(() => {
+    const onSaved = async () => {
+      // Reload settings from backend to pick up the fresh output_device_id
+      await loadSettings()
+      const deviceId = settingsRef.current?.output_device_id
+      if (deviceId) {
+        applyOutputDevice(deviceId)
+      }
+    }
+    window.addEventListener('tts-settings-saved', onSaved)
+    return () => {
+      window.removeEventListener('tts-settings-saved', onSaved)
+    }
+  }, [applyOutputDevice, loadSettings])
 
   return {
     ...state,
@@ -350,5 +427,7 @@ export function useHowlerTTS(initialSettings?: TTSSettings) {
     playItem,
     playQuestionerItem,
     playSubItem,
+    applyOutputDevice,
+    supportsOutputRouting,
   }
 }

@@ -53,6 +53,14 @@ class TTSSettings(models.Model):
         help_text="เวลารอระหว่างชื่อผู้ใช้กับข้อความ (มิลลิวินาที)"
     )
 
+    # Output routing — where TTS audio plays (browser-side via Web Audio API)
+    output_device_id = models.CharField(
+        max_length=255,
+        default='',
+        blank=True,
+        help_text="Web Audio device ID สำหรับเล่น TTS (เช่น 'default', 'communications', หรือ device ID จาก enumerateDevices). ว่างไว้ = browser default speaker.",
+    )
+
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

@@ -16,7 +16,7 @@ class TTSSettingsAdmin(admin.ModelAdmin):
     list_display = [
         'questioner_enabled', 'questioner_voice', 'questioner_rate',
         'responder_enabled', 'responder_voice', 'responder_rate',
-        'responder_delay_ms', 'updated_at',
+        'responder_delay_ms', 'output_device_id', 'updated_at',
     ]
     readonly_fields = ['updated_at']
 
@@ -30,6 +30,14 @@ class TTSSettingsAdmin(admin.ModelAdmin):
         }),
         ('Queue Behavior', {
             'fields': ('responder_delay_ms', 'updated_at'),
+        }),
+        ('Output Device (อุปกรณ์เสียง)', {
+            'description': (
+                'Web Audio device ID สำหรับเล่น TTS (เช่น "default", '
+                '"communications", หรือ device ID จาก enumerateDevices). '
+                'ว่างไว้ = browser default speaker.'
+            ),
+            'fields': ('output_device_id',),
         }),
     )
 

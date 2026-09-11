@@ -13,6 +13,12 @@ interface TTSSettings {
   responder_voice: string
   responder_rate: string
   responder_delay_ms: number
+  output_device_id: string
+}
+
+interface AudioOutputDevice {
+  deviceId: string
+  label: string
 }
 
 interface VoiceGroup {
@@ -61,10 +67,66 @@ export default function TTSSettingsPage() {
   const [saving, setSaving] = useState(false)
   const [testPlaying, setTestPlaying] = useState<string | null>(null)
   const [testError, setTestError] = useState<string | null>(null)
+  const [audioDevicesSupported, setAudioDevicesSupported] = useState(true)
+  const [audioDevices, setAudioDevices] = useState<AudioOutputDevice[]>([])
+  const [devicePermissionGranted, setDevicePermissionGranted] = useState(false)
 
   useEffect(() => {
     loadSettings()
+    detectAudioOutputs()
   }, [])
+
+  // Re-enumerate devices when settings load so the dropdown reflects
+  // the saved output_device_id (devices might not have been available on mount).
+  useEffect(() => {
+    if (settings) {
+      detectAudioOutputs()
+    }
+  }, [settings?.output_device_id])
+
+  const detectAudioOutputs = async () => {
+    // Check if browser supports setSinkId for output device routing
+    if (!navigator.mediaDevices?.enumerateDevices) {
+      setAudioDevicesSupported(false)
+      return
+    }
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
+    const supportsSinkId = AudioContextClass && 'setSinkId' in AudioContextClass.prototype
+    if (!supportsSinkId) {
+      setAudioDevicesSupported(false)
+      return
+    }
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const outputs: AudioOutputDevice[] = devices
+        .filter((d) => d.kind === 'audiooutput')
+        .map((d, i) => ({
+          deviceId: d.deviceId,
+          label: d.label || `Speaker ${i + 1}`,
+        }))
+      setAudioDevices(outputs)
+      // If at least one device has a real label, permission was already granted
+      setDevicePermissionGranted(outputs.some((d) => !d.label.startsWith('Speaker ')))
+    } catch (err) {
+      console.error('Failed to enumerate audio devices:', err)
+      setAudioDevicesSupported(false)
+    }
+  }
+
+  const requestDevicePermission = async () => {
+    try {
+      // Requesting mic permission also unlocks audio output device labels
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // Stop the stream immediately — we only needed the permission prompt
+      stream.getTracks().forEach((t) => t.stop())
+      await detectAudioOutputs()
+    } catch (err: any) {
+      console.error('Failed to get audio permission:', err)
+      if (err?.name === 'NotAllowedError') {
+        setTestError('ผู้ใช้ปฏิเสธสิทธิ์ — กรุณาอนุญาตใน settings ของเบราว์เซอร์')
+      }
+    }
+  }
 
   const loadSettings = async () => {
     setLoading(true)
@@ -130,6 +192,38 @@ export default function TTSSettingsPage() {
         URL.revokeObjectURL(url)
         setTestPlaying(null)
         setTestError('เบราว์เซอร์ไม่อนุญาตให้เล่นเสียง — กดเล่นเองในหน้าแชร์ไฟล์')
+      }
+      await audio.play()
+    } catch (err: any) {
+      setTestPlaying(null)
+      setTestError(err?.message || (err as any)?.toString?.() || 'ไม่สามารถสร้างเสียงได้')
+    }
+  }
+
+  const testOutputDevice = async () => {
+    if (!settings?.output_device_id || testPlaying === 'output') return
+    setTestPlaying('output')
+    setTestError(null)
+    try {
+      const blob = await ttsApi.generate(`สวัสดีค่ะ นี่คือเสียงทดสอบ`, settings.questioner_voice)
+      const url = URL.createObjectURL(blob)
+      const audio = new Audio(url)
+      // Route through the Web Audio context using setSinkId if available
+      if ('setSinkId' in HTMLMediaElement.prototype) {
+        try {
+          await (audio as any).setSinkId(settings.output_device_id)
+        } catch (err) {
+          console.warn('Failed to set sink for test audio:', err)
+        }
+      }
+      audio.onended = () => {
+        URL.revokeObjectURL(url)
+        setTestPlaying(null)
+      }
+      audio.onerror = () => {
+        URL.revokeObjectURL(url)
+        setTestPlaying(null)
+        setTestError('ไม่สามารถเล่นเสียงได้')
       }
       await audio.play()
     } catch (err: any) {
@@ -272,6 +366,75 @@ export default function TTSSettingsPage() {
                       </p>
                     </div>
                   )}
+                </div>
+              )}
+            </div>
+
+            {/* Divider */}
+            <div className="border-t border-border" />
+
+            {/* Output Device Section */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Volume2 className="h-5 w-5 text-accent" />
+                  <h2 className="text-lg font-semibold text-text">อุปกรณ์เสียง (Output Device)</h2>
+                </div>
+                {!audioDevicesSupported && (
+                  <span className="text-[10px] bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded">
+                    เบราว์เซอร์ไม่รองรับ
+                  </span>
+                )}
+              </div>
+
+              {!audioDevicesSupported ? (
+                <p className="text-sm text-yellow-500/80">
+                  เบราว์เซอร์ไม่รองรับการเลือก output device — ใช้ Chrome หรือ Edge เพื่อ route เสียงไปยัง VB-Audio Virtual Cable
+                </p>
+              ) : (
+                <div className="pl-2 space-y-3 border-l-2 border-accent/30">
+                  <div>
+                    <label className="text-xs text-text-muted block mb-1">อุปกรณ์เสียง</label>
+                    <div className="flex gap-2">
+                      <select
+                        value={settings.output_device_id}
+                        onChange={(e) => setSettings({ ...settings, output_device_id: e.target.value })}
+                        className="flex-1 text-sm bg-surface-light border border-border rounded-lg px-3 py-2 text-text focus:outline-none focus:border-primary"
+                      >
+                        <option value="">ค่าเริ่มต้น (Default Speaker)</option>
+                        {audioDevices.map((d) => (
+                          <option key={d.deviceId} value={d.deviceId}>
+                            {d.label}
+                          </option>
+                        ))}
+                      </select>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={testOutputDevice}
+                        disabled={testPlaying === 'output' || !settings.output_device_id}
+                        title="ทดสอบเสียงผ่านอุปกรณ์ที่เลือก"
+                      >
+                        {testPlaying === 'output' ? '🔊' : '▶'}
+                      </Button>
+                    </div>
+                    {testError && !settings.questioner_enabled && !settings.responder_enabled && (
+                      <p className="text-xs text-red-400 mt-1">{testError}</p>
+                    )}
+                    {!devicePermissionGranted && audioDevices.length > 0 && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={requestDevicePermission}
+                        className="mt-1 text-xs text-accent hover:text-accent/80"
+                      >
+                        ขอสิทธิ์ดูชื่ออุปกรณ์ (เช่น CABLE Output)
+                      </Button>
+                    )}
+                    <p className="text-xs text-text-muted mt-1">
+                      เลือก "CABLE Output (VB-Audio Virtual Cable)" เพื่อส่งเสียง TTS ไปยัง OBS แยกจากเสียงระบบ
+                    </p>
+                  </div>
                 </div>
               )}
             </div>

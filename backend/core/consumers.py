@@ -89,7 +89,7 @@ class ChatStreamConsumer(AsyncWebsocketConsumer):
             from datetime import timedelta
 
             try:
-                character = await sync_to_async(Character.objects.get)(id=character_id)
+                character = await database_sync_to_async(Character.objects.get)(id=character_id)
             except Character.DoesNotExist:
                 await self.send(text_data=json.dumps({
                     "type": "error",
@@ -106,7 +106,7 @@ class ChatStreamConsumer(AsyncWebsocketConsumer):
             if user_name and character.enable_per_user_memory:
                 history_qs = history_qs.filter(user_name=user_name)
 
-            history = await sync_to_async(list)(
+            history = await database_sync_to_async(list)(
                 history_qs.order_by('-created_at').values('role', 'content')[:20]
             )
 
@@ -221,13 +221,13 @@ class ChatStreamConsumer(AsyncWebsocketConsumer):
                 except Exception as e:
                     logger.warning(f"Stream language repair failed: {e}")
             # Save messages to DB (assistant content = enforced final text)
-            await sync_to_async(ChatMessage.objects.create)(
+            await database_sync_to_async(ChatMessage.objects.create)(
                 character=character,
                 role=ChatMessage.Role.USER,
                 content=message[:2000],
                 user_name=user_name[:100],
             )
-            assistant_msg = await sync_to_async(ChatMessage.objects.create)(
+            assistant_msg = await database_sync_to_async(ChatMessage.objects.create)(
                 character=character,
                 role=ChatMessage.Role.ASSISTANT,
                 content=final_text[:4000],

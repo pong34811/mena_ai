@@ -27,6 +27,7 @@ def tts_settings_get(request: Request) -> Response:
         'responder_voice': settings.responder_voice,
         'responder_rate': settings.responder_rate,
         'responder_delay_ms': settings.responder_delay_ms,
+        'output_device_id': settings.output_device_id,
     })
 
 
@@ -38,6 +39,7 @@ def tts_settings_update(request: Request) -> Response:
     fields = [
         'questioner_enabled', 'questioner_voice', 'questioner_rate', 'questioner_say_username',
         'responder_enabled', 'responder_voice', 'responder_rate', 'responder_delay_ms',
+        'output_device_id',
     ]
 
     for field in fields:
@@ -55,4 +57,5 @@ def tts_settings_update(request: Request) -> Response:
         'responder_voice': settings.responder_voice,
         'responder_rate': settings.responder_rate,
         'responder_delay_ms': settings.responder_delay_ms,
+        'output_device_id': settings.output_device_id,
     })
