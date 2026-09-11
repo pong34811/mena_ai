@@ -139,7 +139,7 @@ export default function ChatPage() {
   const [showTtsModal, setShowTtsModal] = useState(false)
 
   // WebSocket streaming
-  const ws = useChatWebSocket({
+  useChatWebSocket({
     onToken: useCallback((token: string) => {
       setStreamMsg(prev => prev ? { ...prev, content: prev.content + token } : null)
     }, []),
@@ -747,6 +747,7 @@ export default function ChatPage() {
                   onClick={handleSend}
                   disabled={loading || !input.trim()}
                   size="icon"
+                  aria-label="Send message"
                 >
                   <Send className="h-4 w-4" />
                 </Button>
