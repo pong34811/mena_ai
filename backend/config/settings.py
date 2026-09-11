@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     'providers',
     'chat_messages',
     'messages_tts',
+    'output_devices',
 ]
 
 MIDDLEWARE = [
