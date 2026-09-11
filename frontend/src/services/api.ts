@@ -177,4 +177,25 @@ export const ttsApi = {
   },
 };
 
+// Output Device API
+export const outputDeviceApi = {
+  getCurrent: async (): Promise<{ device: { device_id: string; name: string } | null }> => {
+    const { data } = await api.get('/output-devices/current/');
+    return data;
+  },
+
+  capture: async (
+    deviceId: string,
+    label?: string,
+    platform?: string
+  ): Promise<unknown> => {
+    const { data } = await api.post('/output-devices/capture/', {
+      device_id: deviceId,
+      label: label || deviceId,
+      platform: platform || 'unknown',
+    });
+    return data;
+  },
+};
+
 export default api;

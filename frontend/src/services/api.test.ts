@@ -7,6 +7,7 @@ import {
   llmStatusApi,
   youtubeChatApi,
   ttsApi,
+  outputDeviceApi,
 } from './api'
 
 vi.mock('axios', () => {
@@ -258,5 +259,47 @@ describe('ttsApi', () => {
       { responseType: 'blob' }
     )
     expect(result).toEqual(mockBlob)
+  })
+})
+
+describe('outputDeviceApi', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('getCurrent returns the current device', async () => {
+    const mockData = { device: { device_id: 'cable-1', name: 'Cable Output' } }
+    mockedAxios.get.mockResolvedValueOnce({ data: mockData })
+    const result = await outputDeviceApi.getCurrent()
+    expect(mockedAxios.get).toHaveBeenCalledWith('/output-devices/current/')
+    expect(result).toEqual(mockData)
+  })
+
+  it('getCurrent returns null device when none selected', async () => {
+    mockedAxios.get.mockResolvedValueOnce({ data: { device: null } })
+    const result = await outputDeviceApi.getCurrent()
+    expect(result).toEqual({ device: null })
+  })
+
+  it('capture posts device info', async () => {
+    const mockResult = { success: true }
+    mockedAxios.post.mockResolvedValueOnce({ data: mockResult })
+    const result = await outputDeviceApi.capture('cable-1', 'CABLE Output', 'windows')
+    expect(mockedAxios.post).toHaveBeenCalledWith('/output-devices/capture/', {
+      device_id: 'cable-1',
+      label: 'CABLE Output',
+      platform: 'windows',
+    })
+    expect(result).toEqual(mockResult)
+  })
+
+  it('capture uses deviceId as fallback label', async () => {
+    mockedAxios.post.mockResolvedValueOnce({ data: { success: true } })
+    await outputDeviceApi.capture('dev-1')
+    expect(mockedAxios.post).toHaveBeenCalledWith('/output-devices/capture/', {
+      device_id: 'dev-1',
+      label: 'dev-1',
+      platform: 'unknown',
+    })
   })
 })
