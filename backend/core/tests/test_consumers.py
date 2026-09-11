@@ -147,7 +147,7 @@ class TestChatStreamConsumer:
 
         await communicator.disconnect()
 
-    async def test_handle_chat_character_not_found(self, character):
+    async def test_handle_chat_character_not_found(self):
         """Test that non-existent character returns error."""
         communicator = WebsocketCommunicator(ChatStreamConsumer.as_asgi(), "/ws/chat/")
         await communicator.connect()

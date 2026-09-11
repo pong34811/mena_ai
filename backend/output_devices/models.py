@@ -75,7 +75,7 @@ class OutputDeviceSelection(models.Model):
     )
 
     class Meta:
-        ordering = ['-selected_at']
+        ordering = ['-selected_at', '-id']
         verbose_name = 'Output Device Selection'
         verbose_name_plural = 'Output Device Selections'
 
