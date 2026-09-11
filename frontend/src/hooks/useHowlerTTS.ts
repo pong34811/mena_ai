@@ -212,57 +212,58 @@ export function useHowlerTTS(initialSettings?: TTSSettings) {
   }, [cancelPause])
 
   // Play a single piece of audio, resolving when it finishes (or is stopped)
-  const playSubItem = useCallback(async (text: string, voice: string, rate: string) => {
-    try {
-      const deviceId = settingsRef.current?.output_device_id
-      if (deviceId) {
-        await applyOutputDevice(deviceId)
-      }
+  const playSubItem = useCallback(
+    async (text: string, voice: string, rate: string, routeDevice = true) => {
+      try {
+        const targetDevice = routeDevice ? (settingsRef.current?.output_device_id ?? '') : ''
+        await applyOutputDevice(targetDevice)
 
-      const blob = await ttsApi.generate(text, voice, rate)
-      if (!blob) return
+        const blob = await ttsApi.generate(text, voice, rate)
+        if (!blob) return
 
-      const audio = getAudio()
-      const url = URL.createObjectURL(blob)
-      stopActive()
-      audio.src = url
-      audio.muted = false
+        const audio = getAudio()
+        const url = URL.createObjectURL(blob)
+        stopActive()
+        audio.src = url
+        audio.muted = false
 
-      await new Promise<void>((resolve) => {
-        playResolverRef.current = resolve
-        let resolved = false
-        const finish = () => {
-          if (resolved) return
-          resolved = true
-          if (playResolverRef.current === resolve) playResolverRef.current = null
-          URL.revokeObjectURL(url)
-          resolve()
-        }
-        const onEnded = () => finish()
-        const onError = () => {
-          console.error('TTS audio error')
-          finish()
-        }
-        audio.addEventListener('ended', onEnded, { once: true })
-        audio.addEventListener('error', onError, { once: true })
-
-        audio.play().catch(async () => {
-          if (resolved) return
-          // Autoplay blocked — unlock via primer, then retry once
-          try {
-            await unlockPrime()
-            if (deviceId) await applyOutputDevice(deviceId)
+        await new Promise<void>((resolve) => {
+          playResolverRef.current = resolve
+          let resolved = false
+          const finish = () => {
             if (resolved) return
-            await audio.play()
-          } catch {
+            resolved = true
+            if (playResolverRef.current === resolve) playResolverRef.current = null
+            URL.revokeObjectURL(url)
+            resolve()
+          }
+          const onEnded = () => finish()
+          const onError = () => {
+            console.error('TTS audio error')
             finish()
           }
+          audio.addEventListener('ended', onEnded, { once: true })
+          audio.addEventListener('error', onError, { once: true })
+
+          audio.play().catch(async () => {
+            if (resolved) return
+            // Autoplay blocked — unlock via primer, then retry once
+            try {
+              await unlockPrime()
+              await applyOutputDevice(targetDevice)
+              if (resolved) return
+              await audio.play()
+            } catch {
+              finish()
+            }
+          })
         })
-      })
-    } catch (err) {
-      console.error('Sub-item TTS error:', err)
-    }
-  }, [stopActive, applyOutputDevice, getAudio, unlockPrime])
+      } catch (err) {
+        console.error('Sub-item TTS error:', err)
+      }
+    },
+    [stopActive, applyOutputDevice, getAudio, unlockPrime],
+  )
 
   const setCurrent = useCallback((item: TTSQueueItem | null, isPlaying = false) => {
     currentItemRef.current = item
@@ -275,7 +276,7 @@ export function useHowlerTTS(initialSettings?: TTSSettings) {
 
     try {
       if (item.say_username && item.author_name) {
-        await playSubItem(item.author_name, item.voice, item.rate)
+        await playSubItem(item.author_name, item.voice, item.rate, false)
         if (!isActive()) return
         const delayMs = settingsRef.current?.responder_delay_ms ?? 1000
         await new Promise<void>((resolve) => {
@@ -288,7 +289,7 @@ export function useHowlerTTS(initialSettings?: TTSSettings) {
         })
         if (!isActive()) return
       }
-      await playSubItem(item.text, item.voice, item.rate)
+      await playSubItem(item.text, item.voice, item.rate, false)
     } finally {
       if (isActive()) {
         setCurrent(null)

@@ -152,4 +152,46 @@ describe('useHowlerTTS output device routing', () => {
     expect(result.current.settings.output_device_id).toBe('new-dev')
     expect(sinks).toContain('new-dev')
   })
+
+  it('routes questioner to default speakers and responder back to the device', async () => {
+    const settings: TTSSettings = {
+      questioner_enabled: true,
+      questioner_voice: 'q-voice',
+      questioner_rate: '+0%',
+      questioner_say_username: true,
+      responder_enabled: true,
+      responder_voice: 'r-voice',
+      responder_rate: '+0%',
+      responder_delay_ms: 0,
+      output_device_id: 'cable-dev',
+    }
+
+    const { result } = renderHook(() => useHowlerTTS(settings))
+
+    // Prime the sink to the device first (mimics a prior responder play/selection).
+    await act(async () => {
+      await result.current.setOutputDevice('cable-dev', 'Cable')
+    })
+    expect(sinks).toEqual(['cable-dev'])
+
+    // One exchange: questioner (name + message) then responder.
+    act(() => {
+      result.current.speakExchange({
+        questioner_text: 'Hello streamer',
+        questioner_author: 'FanOne',
+        responder_text: 'Hi there!',
+        source: 'test',
+        source_id: 'rt-2',
+      })
+    })
+
+    await waitFor(() => {
+      expect(generateMock.mock.calls.length).toBe(3)
+    })
+    await waitFor(() => expect(result.current.isPlaying).toBe(false))
+
+    // Questioner segments reset to default (''), responder re-applies the device.
+    // (Second questioner segment is a sink no-op — appliedSinkRef keeps '' from '').
+    expect(sinks).toEqual(['cable-dev', '', 'cable-dev'])
+  })
 })
