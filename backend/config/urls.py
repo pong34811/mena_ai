@@ -12,5 +12,6 @@ urlpatterns = [
         path('', include('providers.urls')),
         path('', include('chat_messages.urls')),
         path('', include('messages_tts.urls')),
+        path('', include('output_devices.urls')),
     ])),
 ]
