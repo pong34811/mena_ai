@@ -26,6 +26,7 @@ services:
       DATABASE_URL: postgres://mena_ai:mena_ai@db:5432/mena_ai
       FREE_LLM_API_URL: http://freellmapi:9001/v1/chat/completions
       REDIS_URL: redis://redis:6379/0
+      PIPER_TTS_URL: http://piper:8888
     volumes:
       - ./backend:/app
       - tts_cache:/app/tts_cache
@@ -34,6 +35,7 @@ services:
     depends_on:
       - db
       - redis
+      - piper
 
   celery-worker:
     build: ./backend
@@ -44,12 +46,14 @@ services:
       DATABASE_URL: postgres://mena_ai:mena_ai@db:5432/mena_ai
       FREE_LLM_API_URL: http://freellmapi:9001/v1/chat/completions
       REDIS_URL: redis://redis:6379/0
+      PIPER_TTS_URL: http://piper:8888
     volumes:
       - ./backend:/app
       - tts_cache:/app/tts_cache
     depends_on:
       - db
       - redis
+      - piper
 
   frontend:
     build: ./frontend
@@ -62,6 +66,17 @@ services:
       - "5173:5173"
     depends_on:
       - backend
+
+  piper:
+    build: ./piper
+    ports:
+      - "8888:8888"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
 
   freellmapi:
     image: ghcr.io/tashfeenahmed/freellmapi:latest
