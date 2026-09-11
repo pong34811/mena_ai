@@ -12,6 +12,7 @@ import pytest
 from django.conf import settings
 
 from core.tasks import generate_tts, debug_task, _get_cache_key
+import core.tasks as core_tasks
 
 
 @pytest.mark.django_db
@@ -42,15 +43,12 @@ class TestTTSTasks:
 
     def test_generate_tts_uses_cache(self, monkeypatch, tmp_path):
         """Test that generate_tts returns cached file if exists."""
-        # Override TTS_CACHE_DIR to tmp_path
         monkeypatch.setattr("core.tasks.TTS_CACHE_DIR", tmp_path)
 
-        # Create a fake cache file
-        cache_key = _get_cache_key("Hello world", "th-TH-PremwadeeNeural", "+0%")
+        cache_key = _get_cache_key("Hello world", "th_TH-tsync2-medium", "+0%")
         cache_file = tmp_path / f"{cache_key}.mp3"
         cache_file.write_bytes(b"fake audio data")
 
-        # We need to call the task directly (not via .delay) to test the function
         from core.tasks import generate_tts
         result = generate_tts("Hello world", "th-TH-PremwadeeNeural", "+0%")
         assert result["success"] is True
@@ -61,17 +59,9 @@ class TestTTSTasks:
         """Test that generate_tts synthesizes new audio when cache miss."""
         monkeypatch.setattr("core.tasks.TTS_CACHE_DIR", tmp_path)
 
-        # Mock edge_tts.Communicate
-        mock_communicate = mock.Mock()
-        mock_communicate.save = mock.AsyncMock()
+        fake_post = mock.Mock(return_value=b"fake mp3")
+        monkeypatch.setattr("core.tasks.call_piper_synthesize", fake_post)
 
-        mock_communicate_class = mock.Mock()
-        mock_communicate_class.return_value = mock_communicate
-
-        monkeypatch.setattr("core.tasks.edge_tts.Communicate", mock_communicate_class)
-
-        # We need to call the task directly (not via .delay) to test the function
-        from core.tasks import generate_tts
         text = "สวัสดีครับ"
         voice = "th-TH-PremwadeeNeural"
         result = generate_tts(text, voice, "+0%")
@@ -80,26 +70,18 @@ class TestTTSTasks:
         assert result["cache_key"] is not None
         assert "audio_path" in result
 
-        # Verify Communicate was called with correct args
-        mock_communicate_class.assert_called_once_with(text, voice, rate="+0%")
-        mock_communicate.save.assert_called_once()
+        # Alias resolved to the piper voice id
+        fake_post.assert_called_once_with(text, "th_TH-tsync2-medium", pytest.approx(1.0))
 
-    def test_generate_tts_handles_exception(self, monkeypatch, tmp_path):
+    def test_generate_tts_handles_synthesis_error(self, monkeypatch, tmp_path):
         """Test that generate_tts handles synthesis errors gracefully."""
         monkeypatch.setattr("core.tasks.TTS_CACHE_DIR", tmp_path)
 
-        # Mock edge_tts.Communicate to raise exception
-        mock_communicate = mock.Mock()
-        mock_communicate.save = mock.AsyncMock(side_effect=Exception("Network error"))
-
-        mock_communicate_class = mock.Mock()
-        mock_communicate_class.return_value = mock_communicate
-
-        monkeypatch.setattr("core.tasks.edge_tts.Communicate", mock_communicate_class)
+        monkeypatch.setattr("core.tasks.call_piper_synthesize", mock.Mock(return_value=None))
 
         result = generate_tts("Hello", "voice", "+0%")
         assert result["success"] is False
-        assert "Network error" in result["error"]
+        assert "TTS" in result["error"]
 
     def test_generate_tts_retries_on_failure(self):
         """Test that generate_tts has retry logic via Celery bind."""
