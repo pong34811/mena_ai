@@ -140,6 +140,15 @@ test.describe('Chat Flow E2E', () => {
     await expect(page.getByRole('button', { name: /TTS On/ })).toBeVisible();
   });
 
+  test('shows the output device selector in the chat header', async ({ page }) => {
+    await page.goto('/chat');
+    // The selector container should be visible (it shows unsupported badge or the select)
+    const selector = page.getByTestId('output-device-selector');
+    const unsupported = page.getByTestId('output-device-unsupported');
+    // Either the selector or the unsupported badge should exist
+    await expect(selector.or(unsupported)).toBeVisible({ timeout: 10000 });
+  });
+
   test('shows the YouTube panel when toggled', async ({ page }) => {
     await page.goto('/chat');
     await page.getByRole('button', { name: /YouTube Live Chat/ }).click();

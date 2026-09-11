@@ -32,6 +32,7 @@ const mockTts = vi.hoisted(() => ({
     responder_enabled: true,
     questioner_voice: 'th_TH-tsync2-medium',
     responder_voice: 'th_TH-tsync2-medium',
+    output_device_id: '',
   },
   speakExchange: vi.fn(),
   currentItem: null,
@@ -39,6 +40,7 @@ const mockTts = vi.hoisted(() => ({
   unlockAudio: vi.fn(),
   skip: vi.fn(),
   reloadSettings: vi.fn(),
+  setOutputDevice: vi.fn(),
 }));
 
 vi.mock('@/hooks/useHowlerTTS', () => ({
@@ -56,6 +58,11 @@ vi.mock('@/hooks/useChatWebSocket', () => ({
 // Mock useYouTubeWebSocket hook
 vi.mock('@/hooks/useYouTubeWebSocket', () => ({
   useYouTubeWebSocket: () => undefined,
+}));
+
+// Mock OutputDeviceSelector so it doesn't hit real mediaDevices in jsdom
+vi.mock('@/components/ui/OutputDeviceSelector', () => ({
+  OutputDeviceSelector: () => <div data-testid="output-device-selector">Device Selector</div>,
 }));
 
 // Mock TtsConfigModal
@@ -303,5 +310,13 @@ describe('ChatPage', () => {
     const userNameInput = screen.getByPlaceholderText('Your name (for memory)');
     expect(userNameInput).toBeInTheDocument();
     expect(userNameInput).toHaveValue('Dev');
+  });
+
+  it('renders the output device selector in the header', async () => {
+    renderChatPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('output-device-selector')).toBeInTheDocument();
+    });
   });
 });

@@ -11,6 +11,7 @@ import { useHowlerTTS } from '@/hooks/useHowlerTTS'
 import { useChatWebSocket } from '@/hooks/useChatWebSocket'
 import { useYouTubeWebSocket } from '@/hooks/useYouTubeWebSocket'
 import { TtsConfigModal } from '@/components/ui/TtsConfigModal'
+import { OutputDeviceSelector } from '@/components/ui/OutputDeviceSelector'
 
 interface DisplayMessage {
   id: string
@@ -285,6 +286,10 @@ export default function ChatPage() {
     }
   }
 
+  const handleDeviceChange = useCallback((deviceId: string, label?: string) => {
+    tts.setOutputDevice(deviceId, label)
+  }, [tts])
+
 
   const handleSend = async () => {
     if (!input.trim() || !selectedCharacter) return
@@ -538,6 +543,10 @@ export default function ChatPage() {
             </Link>
           </nav>
           <div className="flex items-center gap-2">
+            <OutputDeviceSelector
+              value={tts.settings?.output_device_id ?? ''}
+              onDeviceChange={handleDeviceChange}
+            />
             <Button
               onClick={toggleTTSEnabled}
               variant={ttsEnabled ? 'default' : 'outline'}
