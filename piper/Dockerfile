@@ -20,7 +20,11 @@ RUN mkdir -p /models && \
     curl -fsSL -o /models/th_TH-tsync2-medium.onnx \
         "https://huggingface.co/rhasspy/piper-voices/resolve/main/th/th_TH/tsync2/medium/th_TH-tsync2-medium.onnx" && \
     curl -fsSL -o /models/th_TH-tsync2-medium.onnx.json \
-        "https://huggingface.co/rhasspy/piper-voices/resolve/main/th/th_TH/tsync2/medium/th_TH-tsync2-medium.onnx.json"
+        "https://huggingface.co/rhasspy/piper-voices/resolve/main/th/th_TH/tsync2/medium/th_TH-tsync2-medium.onnx.json" && \
+    curl -fsSL -o /models/en_US-lessac-medium.onnx \
+        "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx" && \
+    curl -fsSL -o /models/en_US-lessac-medium.onnx.json \
+        "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json"
 
 COPY serve.py /app/serve.py
 

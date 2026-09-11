@@ -9,6 +9,7 @@ from core import tts_service as svc
 from core.tts_service import (
     TTSService,
     DEFAULT_VOICE,
+    EN_VOICE,
     VOICE_ALIAS_MAP,
     VOICE_OPTIONS,
     call_piper_synthesize,
@@ -19,9 +20,10 @@ from core.tts_service import (
 
 
 class TestPiperConfig:
-    def test_voice_options_thai_only(self):
-        assert list(VOICE_OPTIONS.keys()) == ["thai"]
+    def test_voice_options_tracks_local_models(self):
+        assert list(VOICE_OPTIONS.keys()) == ["thai", "english"]
         assert VOICE_OPTIONS["thai"][0]["id"] == "th_TH-tsync2-medium"
+        assert VOICE_OPTIONS["english"][0]["id"] == EN_VOICE
         assert DEFAULT_VOICE == "th_TH-tsync2-medium"
 
     def test_alias_map_covers_all_legacy_voices(self):
@@ -31,11 +33,14 @@ class TestPiperConfig:
             "en-US-MichelleNeural", "en-GB-SoniaNeural", "en-GB-RyanNeural",
             "ja-JP-NanamiNeural", "ja-JP-KeitaNeural",
         ]
-        assert all(VOICE_ALIAS_MAP[oid] == DEFAULT_VOICE for oid in old_ids)
+        assert all(VOICE_ALIAS_MAP[oid] == DEFAULT_VOICE for oid in old_ids[:2])
+        assert all(VOICE_ALIAS_MAP[oid] == EN_VOICE for oid in old_ids[2:-2])
+        assert all(VOICE_ALIAS_MAP[oid] == DEFAULT_VOICE for oid in old_ids[-2:])
 
-    def test_get_all_voices_thai_only(self):
+    def test_get_all_voices_tracks_local_models(self):
         assert get_all_voices() == VOICE_OPTIONS
         assert len(get_all_voices()["thai"]) == 1
+        assert get_all_voices()["english"][0]["id"] == EN_VOICE
 
 
 class TestResolveVoice:
@@ -87,6 +92,25 @@ class TestCallPiperSynthesize:
             raise requests.exceptions.ConnectionError("down")
         monkeypatch.setattr(svc.requests, "post", mock.Mock(side_effect=raise_error))
         assert call_piper_synthesize("hi", "th_TH-tsync2-medium", 1.0) is None
+
+
+class TestRomanToThai:
+    def test_latin_name_transliterates(self):
+        assert svc._roman_to_thai("warit") == "วอารอิต"
+
+    def test_thai_text_unchanged(self):
+        assert svc._roman_to_thai("สวัสดี") == "สวัสดี"
+
+    def test_digits_map_to_thai_words(self):
+        assert svc._roman_to_thai("007") == "ศูนย์ศูนย์เจ็ด"
+
+    def test_mixed_keeps_thai(self):
+        assert svc._roman_to_thai("johnแอน") == "จโอฮนแอน"
+
+    def test_spaces_preserved(self):
+        # Piper tokenizes Thai on spaces; dropping them yields silent audio.
+        assert svc._roman_to_thai("warit แมว") == "วอารอิต แมว"
+        assert svc._roman_to_thai("สวัสดี ครับ") == "สวัสดี ครับ"
 
 
 class TestGenerators:
@@ -143,6 +167,39 @@ class TestGenerators:
         resp = mock.Mock(status_code=200, content=b"x")
         monkeypatch.setattr(svc.requests, "post", mock.Mock(return_value=resp))
         tts = TTSService(voice="th-TH-PremwadeeNeural", rate="+0%")
-        expected = svc.get_cache_path("test", DEFAULT_VOICE, "+0%")
-        tts.generate("test")
+        # English text routes to the EN voice regardless of the Thai alias.
+        expected = svc.get_cache_path("สวัสดีจ้า", DEFAULT_VOICE, "+0%")
+        tts.generate("สวัสดีจ้า")
         assert expected.exists()
+
+    def test_generate_routes_english_text_to_en_voice(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(svc, "CACHE_DIR", tmp_path)
+        resp = mock.Mock(status_code=200, content=b"en-mp3")
+        monkeypatch.setattr(svc.requests, "post", mock.Mock(return_value=resp))
+        tts = TTSService(voice=DEFAULT_VOICE, rate="+0%")
+        out = tts.generate("warit")
+        assert out is not None
+        call = svc.requests.post.call_args
+        assert call.kwargs["json"]["voice"] == EN_VOICE
+        assert call.kwargs["json"]["text"] == "warit"  # not transliterated
+
+    def test_generate_routes_thai_text_to_thai_voice(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(svc, "CACHE_DIR", tmp_path)
+        resp = mock.Mock(status_code=200, content=b"th-mp3")
+        monkeypatch.setattr(svc.requests, "post", mock.Mock(return_value=resp))
+        tts = TTSService(voice=EN_VOICE, rate="+0%")
+        out = tts.generate("สวัสดีครับ")
+        assert out is not None
+        call = svc.requests.post.call_args
+        assert call.kwargs["json"]["voice"] == DEFAULT_VOICE
+
+    def test_generate_transliterates_latin_embedded_in_thai(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(svc, "CACHE_DIR", tmp_path)
+        resp = mock.Mock(status_code=200, content=b"th-mp3")
+        monkeypatch.setattr(svc.requests, "post", mock.Mock(return_value=resp))
+        tts = TTSService(voice=DEFAULT_VOICE, rate="+0%")
+        out = tts.generate("johnแอน")
+        assert out is not None
+        call = svc.requests.post.call_args
+        assert call.kwargs["json"]["voice"] == DEFAULT_VOICE
+        assert call.kwargs["json"]["text"] == "จโอฮนแอน"

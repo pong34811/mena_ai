@@ -51,26 +51,69 @@ def _strip_emojis(text: str) -> str:
     return _EMOJI_RE.sub("", text).strip()
 
 
-# Thai voice only (local Piper). Quality "medium", robotic vs Azure — user-approved.
+# Latin letter -> Thai phonetic, for the Thai-only Piper voice. The Thai model
+# drops every non-Thai character, so English usernames ("warit") would otherwise
+# synthesize as silence. This maps them to an approximate Thai reading.
+_ROMAN_TO_THAI = {
+    'a': 'อา', 'b': 'บ', 'c': 'ค', 'd': 'ด', 'e': 'เอ', 'f': 'ฟ',
+    'g': 'ก', 'h': 'ฮ', 'i': 'อิ', 'j': 'จ', 'k': 'ค', 'l': 'ล',
+    'm': 'ม', 'n': 'น', 'o': 'โอ', 'p': 'พ', 'q': 'คิว', 'r': 'ร',
+    's': 'ส', 't': 'ต', 'u': 'อู', 'v': 'ว', 'w': 'ว', 'x': 'เอ็กซ์',
+    'y': 'วาย', 'z': 'ซี',
+    '0': 'ศูนย์', '1': 'หนึ่ง', '2': 'สอง', '3': 'สาม', '4': 'สี่',
+    '5': 'ห้า', '6': 'หก', '7': 'เจ็ด', '8': 'แปด', '9': 'เก้า',
+}
+
+_THAI_RE = re.compile(r'[\u0e00-\u0e7f]')
+
+
+def _roman_to_thai(text: str) -> str:
+    """Convert Latin letters/digits in text to Thai phonetics (keeps Thai as-is).
+
+    Only converts runs that contain no Thai at all; mixed text keeps its Thai.
+    Spaces are preserved — Piper tokenizes Thai on word boundaries and drops
+    the whole utterance if they're removed.
+    """
+    out = []
+    for char in text:
+        if char == ' ' or _THAI_RE.match(char):
+            out.append(char)
+        elif char.isascii():
+            out.append(_ROMAN_TO_THAI.get(char.lower(), ''))
+        else:
+            out.append(char)
+    return ''.join(out)
+
+
+# Voices available in the piper sidecar. The response language drives which is
+# picked automatically in generate() (Thai text -> Thai voice, otherwise the
+# English voice so Latin usernames like "warit" are spoken natively instead of
+# transliterated).
 VOICE_OPTIONS = {
     'thai': [
         {'id': 'th_TH-tsync2-medium', 'name': 'Thai Female (tsync2)', 'gender': 'Female'},
     ],
+    'english': [
+        {'id': 'en_US-lessac-medium', 'name': 'English Male (lessac)', 'gender': 'Male'},
+    ],
 }
 
 DEFAULT_VOICE = 'th_TH-tsync2-medium'
+EN_VOICE = 'en_US-lessac-medium'
 
-# Map every legacy edge-tts voice id used anywhere in the repo to the piper voice,
-# so stored DB values and old frontend values keep working.
+# Map every legacy edge-tts voice id used anywhere in the repo to a piper voice,
+# so stored DB values and old frontend values keep working. English aliases map
+# to the English voice so English text routes correctly even when a stored
+# setting still says "en-US-AriaNeural".
 VOICE_ALIAS_MAP = {
     'th-TH-PremwadeeNeural': DEFAULT_VOICE,
     'th-TH-NiwatNeural': DEFAULT_VOICE,
-    'en-US-AriaNeural': DEFAULT_VOICE,
-    'en-US-GuyNeural': DEFAULT_VOICE,
-    'en-US-JennyNeural': DEFAULT_VOICE,
-    'en-US-MichelleNeural': DEFAULT_VOICE,
-    'en-GB-SoniaNeural': DEFAULT_VOICE,
-    'en-GB-RyanNeural': DEFAULT_VOICE,
+    'en-US-AriaNeural': EN_VOICE,
+    'en-US-GuyNeural': EN_VOICE,
+    'en-US-JennyNeural': EN_VOICE,
+    'en-US-MichelleNeural': EN_VOICE,
+    'en-GB-SoniaNeural': EN_VOICE,
+    'en-GB-RyanNeural': EN_VOICE,
     'ja-JP-NanamiNeural': DEFAULT_VOICE,
     'ja-JP-KeitaNeural': DEFAULT_VOICE,
 }
@@ -195,7 +238,20 @@ class TTSService:
         if len(text) > 300:
             text = text[:300]
 
-        voice = resolve_voice(self.voice)
+        # Route by language. Thai text uses the Thai voice; anything else uses
+        # the English voice so Latin text/usernames are spoken natively instead
+        # of being dropped (silence) or Thai-transliterated. Each piper model
+        # speaks one language, so the text content decides (an EN model can't
+        # read Thai and vice versa), not the stored voice setting.
+        if _THAI_RE.search(text):
+            # Thai-only Piper drops non-Thai chars -> silent audio. Phonetic-map
+            # any Latin embedded in Thai (e.g. "johnแอน") so it actually speaks.
+            text = _roman_to_thai(text)
+            if not text:
+                return None
+            voice = DEFAULT_VOICE
+        else:
+            voice = EN_VOICE
         length_scale = rate_to_length_scale(self.rate)
         cache_path = get_cache_path(text, voice, self.rate)
 

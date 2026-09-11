@@ -31,10 +31,10 @@ class TestTTSTasks:
         """Test that generate_tts returns cached file if exists."""
         monkeypatch.setattr("core.tts_service.CACHE_DIR", tmp_path)
 
-        cache_file = get_cache_path("Hello world", DEFAULT_VOICE, "+0%")
+        cache_file = get_cache_path("สวัสดีครับ", DEFAULT_VOICE, "+0%")
         cache_file.write_bytes(b"fake audio data")
 
-        result = generate_tts("Hello world", "th-TH-PremwadeeNeural", "+0%")
+        result = generate_tts("สวัสดีครับ", "th-TH-PremwadeeNeural", "+0%")
         assert result["success"] is True
         assert result["cache_key"] == cache_file.stem
         assert result["audio_path"] == os.path.relpath(cache_file, settings.BASE_DIR)

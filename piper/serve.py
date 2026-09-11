@@ -23,17 +23,18 @@ logger = logging.getLogger("piper-sidecar")
 
 VOICES_DIR = "/models"
 DEFAULT_VOICE = "th_TH-tsync2-medium"
+ALLOWED_VOICES = {"th_TH-tsync2-medium", "en_US-lessac-medium"}
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    _load_piper()
+    _load_piper(DEFAULT_VOICE)
     yield
 
 
 app = FastAPI(title="Piper TTS sidecar", version="1.0", lifespan=lifespan)
 
-_piper = None
+_pipers: dict[str, "PiperVoice"] = {}
 _lock = threading.Lock()
 
 
@@ -45,30 +46,29 @@ class TTSRequest(BaseModel):
     noise_w: float = 0.8
 
 
-def _load_piper() -> PiperVoice:
-    global _piper
-    if _piper is None:
+def _load_piper(voice: str) -> "PiperVoice":
+    if voice not in _pipers:
         with _lock:
-            if _piper is None:
-                logger.info("Loading piper voice %s...", DEFAULT_VOICE)
-                _piper = PiperVoice.load(f"{VOICES_DIR}/{DEFAULT_VOICE}.onnx")
-                logger.info("Piper voice loaded (sr=%s).", _piper.config.sample_rate)
-    return _piper
+            if voice not in _pipers:
+                logger.info("Loading piper voice %s...", voice)
+                _pipers[voice] = PiperVoice.load(f"{VOICES_DIR}/{voice}.onnx")
+                logger.info("Piper voice %s loaded (sr=%s).", voice, _pipers[voice].config.sample_rate)
+    return _pipers[voice]
 
 
-def _wav_bytes(text: str, length_scale: float, noise_scale: float, noise_w: float) -> bytes:
-    voice = _load_piper()
+def _wav_bytes(text: str, voice: str, length_scale: float, noise_scale: float, noise_w: float) -> bytes:
+    piper = _load_piper(voice)
     config = SynthesisConfig(
         length_scale=length_scale,
         noise_scale=noise_scale,
         noise_w_scale=noise_w,
     )
-    sample_rate = voice.config.sample_rate
+    sample_rate = piper.config.sample_rate
     pcm = bytearray()
     # Serialize onnxruntime inference (piper is single-model, CPU-heavy).
     # Voice loading is done above the lock, so no re-entrant deadlock.
     with _lock:
-        for chunk in voice.synthesize(text, config):
+        for chunk in piper.synthesize(text, config):
             pcm += chunk.audio_int16_bytes
 
     buf = io.BytesIO()
@@ -108,10 +108,10 @@ async def healthz():
 def synthesize(req: TTSRequest):
     if not req.text.strip():
         raise HTTPException(status_code=400, detail="text is required")
-    if req.voice != DEFAULT_VOICE:
-        raise HTTPException(status_code=400, detail=f"only voice {DEFAULT_VOICE!r} is supported")
+    if req.voice not in ALLOWED_VOICES:
+        raise HTTPException(status_code=400, detail=f"voice {req.voice!r} not supported, allowed: {sorted(ALLOWED_VOICES)}")
     try:
-        wav = _wav_bytes(req.text, req.length_scale, req.noise_scale, req.noise_w)
+        wav = _wav_bytes(req.text, req.voice, req.length_scale, req.noise_scale, req.noise_w)
         mp3 = _to_mp3(wav)
         return Response(content=mp3, media_type="audio/mpeg")
     except Exception as e:  # noqa: BLE001
