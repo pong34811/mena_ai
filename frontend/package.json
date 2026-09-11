@@ -13,12 +13,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@playwright/test": "^1.63.0",
     "axios": "^1.20.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "howler": "^2.2.4",
     "lucide-react": "^1.40.0",
-    "@playwright/test": "^1.63.0",
     "playwright": "^1.63.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
@@ -29,7 +28,6 @@
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
-    "@types/howler": "^2.2.13",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
