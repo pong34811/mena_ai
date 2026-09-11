@@ -28,7 +28,7 @@ class TTSSettings(models.Model):
     )
     questioner_say_username = models.BooleanField(
         default=True,
-        help_text="พูดชื่อผู้ใช้ก่อนข้อความ (เช่น username... รอ 3 วินาที... ข้อความ)"
+        help_text="พูดชื่อผู้ใช้ก่อนข้อความ (เช่น username... รอ 1 วินาที... ข้อความ)"
     )
 
     # Responder settings (AI Character)
@@ -49,7 +49,7 @@ class TTSSettings(models.Model):
 
     # Queue behavior
     responder_delay_ms = models.IntegerField(
-        default=3000,
+        default=1000,
         help_text="เวลารอระหว่างชื่อผู้ใช้กับข้อความ (มิลลิวินาที)"
     )
 

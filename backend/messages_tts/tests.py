@@ -23,7 +23,7 @@ class TestTTSSettingsModel:
         assert settings.responder_enabled is True
         assert settings.responder_voice == "th-TH-PremwadeeNeural"
         assert settings.responder_rate == "+0%"
-        assert settings.responder_delay_ms == 3000
+        assert settings.responder_delay_ms == 1000
 
     def test_singleton_persistence(self):
         settings1 = TTSSettings.get_instance()
@@ -93,7 +93,7 @@ class TestTTSSettingsGetView:
         assert response.data["questioner_enabled"] is True
         assert response.data["questioner_voice"] == "th-TH-PremwadeeNeural"
         assert response.data["responder_enabled"] is True
-        assert response.data["responder_delay_ms"] == 3000
+        assert response.data["responder_delay_ms"] == 1000
 
     def test_get_settings_after_update(self):
         # First update

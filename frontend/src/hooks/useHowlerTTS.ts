@@ -60,7 +60,7 @@ const defaultSettings: TTSSettings = {
   responder_enabled: false,
   responder_voice: 'th-TH-PremwadeeNeural',
   responder_rate: '+0%',
-  responder_delay_ms: 3000,
+  responder_delay_ms: 1000,
 }
 
 export function useHowlerTTS(initialSettings?: TTSSettings) {
@@ -208,7 +208,7 @@ export function useHowlerTTS(initialSettings?: TTSSettings) {
       if (item.say_username && item.author_name) {
         await playSubItem(item.author_name, item.voice, item.rate)
         if (!isActive()) return
-        const delayMs = settingsRef.current?.responder_delay_ms ?? 3000
+        const delayMs = settingsRef.current?.responder_delay_ms ?? 1000
         await new Promise<void>((resolve) => {
           pauseResolveRef.current = resolve
           pauseTimerRef.current = setTimeout(() => {
